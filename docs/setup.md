@@ -11,7 +11,7 @@
 ## Step 1 — Clone & Install
 
 ```bash
-git clone https://github.com/your-username/resend-client.git
+git clone https://github.com/abdul-karim-mia/resend-client.git
 cd resend-client
 pnpm install
 ```

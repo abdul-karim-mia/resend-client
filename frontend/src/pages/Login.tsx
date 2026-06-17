@@ -117,7 +117,7 @@ export default function LoginPage() {
         <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', marginTop: 24 }}>
           Self-hosted on Cloudflare Workers ·{' '}
           <a
-            href="https://github.com/your-username/resend-client"
+            href="https://github.com/abdul-karim-mia/resend-client"
             target="_blank"
             rel="noopener noreferrer"
             style={{ color: 'var(--accent-light)' }}

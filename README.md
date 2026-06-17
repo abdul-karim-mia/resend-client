@@ -2,7 +2,7 @@
 
 > A self-hosted, open-source, multi-tenant email client for [Resend](https://resend.com) — built entirely on Cloudflare's edge platform.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/your-username/resend-client)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/abdul-karim-mia/resend-client)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
@@ -47,7 +47,7 @@
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/your-username/resend-client.git
+git clone https://github.com/abdul-karim-mia/resend-client.git
 cd resend-client
 pnpm install
 ```
