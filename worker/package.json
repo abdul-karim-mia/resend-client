@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "wrangler dev --local",
+    "dev": "wrangler dev --remote",
     "deploy": "wrangler deploy",
+    "types": "wrangler types",
     "db:apply": "wrangler d1 execute resend-client-db --local --file=./schema.sql",
-    "db:apply:remote": "wrangler d1 execute resend-client-db --remote --file=./schema.sql",
-    "cf-typegen": "wrangler types"
+    "db:apply:remote": "wrangler d1 execute resend-client-db --remote --file=./schema.sql"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.8.0",
@@ -17,7 +17,7 @@
     "zod": "^4.4.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260616.0",
+    "@types/node": "^22.19.21",
     "typescript": "^6.0.0",
     "wrangler": "^4.101.0"
   }

@@ -25,5 +25,16 @@
   },
   "vars": {
     "ENVIRONMENT": "production"
+  },
+  "dev": {
+    "port": 8787,
+    "local_protocol": "http"
+  },
+  "env": {
+    "development": {
+      "vars": {
+        "ENVIRONMENT": "development"
+      }
+    }
   }
 }
