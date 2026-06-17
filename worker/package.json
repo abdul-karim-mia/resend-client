@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev --remote",
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler deploy --env=\"\"",
     "types": "wrangler types",
     "db:apply": "wrangler d1 execute resend-client-db --local --file=./schema.sql",
     "db:apply:remote": "wrangler d1 execute resend-client-db --remote --file=./schema.sql"
