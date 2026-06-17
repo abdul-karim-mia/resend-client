@@ -1,0 +1,8 @@
+# Worker Local Dev Secrets
+# Copy to .dev.vars and fill in real values
+# This file is safe to commit — .dev.vars is gitignored
+
+MASTER_ENCRYPTION_KEY=your-64-char-hex-key-here
+JWT_SECRET=your-64-char-random-string-here
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD_HASH=your-bcrypt-hash-here

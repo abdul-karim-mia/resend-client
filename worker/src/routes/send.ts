@@ -1,0 +1,164 @@
+import { Hono } from 'hono'
+import { nanoid } from 'nanoid'
+import { Resend } from 'resend'
+import { decryptApiKey } from '../lib/crypto'
+import { resolveThreadId } from '../lib/threading'
+import type { Bindings, Account } from '../types'
+
+export const sendRoutes = new Hono<{ Bindings: Bindings }>()
+
+// POST /api/send — send or reply to an email
+sendRoutes.post('/', async (c) => {
+  const body = await c.req.json<{
+    accountId: string
+    to: string[]
+    cc?: string[]
+    bcc?: string[]
+    subject: string
+    html: string
+    text?: string
+    replyToEmailId?: string
+    templateId?: string
+    attachmentKeys?: string[] // R2 keys
+  }>()
+
+  const { accountId, to, cc, bcc, subject, html, text, replyToEmailId, attachmentKeys } = body
+
+  // Load account
+  const account = await c.env.DB.prepare(`SELECT * FROM accounts WHERE id = ?`)
+    .bind(accountId).first<Account>()
+
+  if (!account) return c.json({ success: false, error: 'Account not found' }, 404)
+
+  const apiKey = await decryptApiKey(account.resend_api_key_enc, c.env.MASTER_ENCRYPTION_KEY)
+  const resend = new Resend(apiKey)
+
+  // Threading headers
+  let inReplyTo: string | undefined
+  let references: string | undefined
+  let threadId: string
+
+  if (replyToEmailId) {
+    const parent = await c.env.DB.prepare(
+      `SELECT thread_id, message_id FROM emails WHERE id = ?`
+    ).bind(replyToEmailId).first<{ thread_id: string; message_id: string | null }>()
+
+    if (parent) {
+      threadId = parent.thread_id
+      inReplyTo = parent.message_id ?? undefined
+      references = parent.message_id ?? undefined
+    } else {
+      threadId = crypto.randomUUID()
+    }
+  } else {
+    threadId = crypto.randomUUID()
+  }
+
+  // Build attachments from R2
+  const attachments: Array<{ filename: string; content: string }> = []
+  if (attachmentKeys && attachmentKeys.length > 0) {
+    for (const key of attachmentKeys) {
+      try {
+        const obj = await c.env.R2.get(key)
+        if (obj) {
+          const buffer = await obj.arrayBuffer()
+          const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)))
+          attachments.push({
+            filename: key.split('/').pop() ?? 'attachment',
+            content: base64,
+          })
+        }
+      } catch (err) {
+        console.error('[send] Attachment fetch error:', err)
+      }
+    }
+  }
+
+  // Send via Resend
+  const { data, error } = await resend.emails.send({
+    from: `${account.from_name} <noreply@${account.domain}>`,
+    to,
+    cc: cc ?? undefined,
+    bcc: bcc ?? undefined,
+    subject,
+    html,
+    text: text ?? undefined,
+    headers: {
+      ...(inReplyTo ? { 'In-Reply-To': inReplyTo } : {}),
+      ...(references ? { References: references } : {}),
+    },
+    attachments: attachments.length > 0 ? attachments : undefined,
+  })
+
+  if (error) {
+    console.error('[send] Resend error:', error)
+    return c.json({ success: false, error: error.message }, 400)
+  }
+
+  // Save sent email to DB
+  const emailId = nanoid()
+  await c.env.DB.prepare(`
+    INSERT INTO emails (
+      id, account_id, thread_id, message_id,
+      in_reply_to, folder, direction,
+      sender_name, sender_email,
+      recipient_to, recipient_cc, recipient_bcc,
+      subject, body_html, body_text,
+      read_status, delivery_status, resend_email_id
+    ) VALUES (?, ?, ?, ?, ?, 'sent', 'outbound', ?, ?, ?, ?, ?, ?, ?, ?, 1, 'sent', ?)
+  `).bind(
+    emailId, accountId, threadId, null,
+    inReplyTo ?? null,
+    account.from_name, `noreply@${account.domain}`,
+    JSON.stringify(to),
+    cc ? JSON.stringify(cc) : null,
+    bcc ? JSON.stringify(bcc) : null,
+    subject, html, text ?? null,
+    data?.id ?? null
+  ).run()
+
+  return c.json({ success: true, data: { id: emailId, resendId: data?.id } })
+})
+
+// POST /api/send/draft — save draft
+sendRoutes.post('/draft', async (c) => {
+  const body = await c.req.json<{
+    accountId: string
+    to?: string[]
+    subject?: string
+    html?: string
+    existingDraftId?: string
+  }>()
+
+  const emailId = body.existingDraftId ?? nanoid()
+
+  if (body.existingDraftId) {
+    await c.env.DB.prepare(`
+      UPDATE emails SET
+        recipient_to = ?, subject = ?, body_html = ?
+      WHERE id = ? AND folder = 'drafts'
+    `).bind(
+      JSON.stringify(body.to ?? []),
+      body.subject ?? '',
+      body.html ?? '',
+      emailId
+    ).run()
+  } else {
+    await c.env.DB.prepare(`
+      INSERT INTO emails (
+        id, account_id, thread_id, message_id,
+        folder, direction, sender_email,
+        recipient_to, subject, body_html,
+        read_status, delivery_status
+      ) VALUES (?, ?, ?, null, 'drafts', 'outbound', ?, ?, ?, ?, 1, 'pending')
+    `).bind(
+      emailId, body.accountId, crypto.randomUUID(),
+      `noreply@draft`,
+      JSON.stringify(body.to ?? []),
+      body.subject ?? '(Draft)',
+      body.html ?? '',
+    ).run()
+  }
+
+  return c.json({ success: true, data: { id: emailId } })
+})
