@@ -27,17 +27,21 @@ export async function resolveThreadId(
     if (parent) return parent.thread_id
   }
 
-  // Try References header (full chain of message IDs)
+  // Try References header (full chain of message IDs) — batch query
   if (references) {
     const refIds = references
       .split(/\s+/)
       .map((r) => r.trim())
       .filter(Boolean)
 
-    for (const refId of refIds.reverse()) {
+    if (refIds.length > 0) {
+      // Batch lookup — most recent ref (last) takes priority
+      const placeholders = refIds.map(() => '?').join(', ')
       const parent = await db
-        .prepare(`SELECT thread_id FROM emails WHERE message_id = ? AND account_id = ? LIMIT 1`)
-        .bind(refId, accountId)
+        .prepare(
+          `SELECT thread_id FROM emails WHERE message_id IN (${placeholders}) AND account_id = ? ORDER BY created_at DESC LIMIT 1`
+        )
+        .bind(...refIds, accountId)
         .first<{ thread_id: string }>()
 
       if (parent) return parent.thread_id

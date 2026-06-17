@@ -1,10 +1,10 @@
 {
   "name": "resend-client-worker",
-  "main": "src/index.ts",
+  "main": "worker/src/index.ts",
   "compatibility_date": "2025-06-01",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
-    "directory": "../frontend/dist",
+    "directory": "frontend/dist",
     "binding": "ASSETS"
   },
   "d1_databases": [

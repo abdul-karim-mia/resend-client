@@ -81,10 +81,24 @@ webhookRoutes.post('/:accountId/inbound', async (c) => {
 // POST /webhook/:accountId/events — Delivery status updates
 webhookRoutes.post('/:accountId/events', async (c) => {
   const accountId = c.req.param('accountId')
-  const payload = await c.req.json<{
-    type: string
-    data: { email_id: string }
-  }>()
+
+  // Load account (for webhook secret)
+  const account = await c.env.DB.prepare(
+    `SELECT webhook_secret FROM accounts WHERE id = ?`
+  ).bind(accountId).first<{ webhook_secret: string }>()
+
+  if (!account) return c.json({ error: 'Account not found' }, 404)
+
+  // Verify webhook signature (same as inbound handler)
+  const signature = c.req.header('svix-signature') ?? c.req.header('resend-signature') ?? ''
+  const rawBody = await c.req.text()
+
+  if (account.webhook_secret && !(await verifySignature(rawBody, signature, account.webhook_secret))) {
+    console.warn(`[webhook/events] Invalid signature for account ${accountId}`)
+    return c.json({ error: 'Invalid signature' }, 401)
+  }
+
+  const payload = JSON.parse(rawBody) as { type: string; data: { email_id: string } }
 
   const statusMap: Record<string, string> = {
     'email.sent': 'sent',
@@ -211,7 +225,7 @@ async function triggerAutoReply(
   bodyText: string
 ): Promise<void> {
   try {
-    const aiResponse = await (env.AI as Ai).run('@cf/meta/llama-3.1-8b-instruct', {
+    const aiResponse = await (env.AI as Ai).run(account.ai_model || '@cf/meta/llama-3.1-8b-instruct', {
       messages: [
         { role: 'system', content: account.ai_system_prompt },
         {

@@ -29,7 +29,10 @@ export default function ReadingPane() {
     return (
       <div className="reading-pane" style={{ alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center', opacity: 0.35 }}>
-          <div style={{ fontSize: 64, marginBottom: 12 }}>✉️</div>
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 12 }}>
+            <rect x="2" y="4" width="20" height="16" rx="2" />
+            <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+          </svg>
           <p style={{ fontSize: 15, fontWeight: 500 }}>Select an email to read</p>
           <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
             or press <kbd style={{ padding: '1px 5px', background: 'var(--bg-elevated)', borderRadius: 4, border: '1px solid var(--border)', fontSize: 11 }}>C</kbd> to compose
@@ -74,15 +77,12 @@ export default function ReadingPane() {
     })
   }
 
-  const handleDownloadAttachment = async (attId: string, filename: string) => {
-    const res = await fetch(`/api/attachments/${attId}/download`, { credentials: 'include' })
-    const data = await res.json() as { success: boolean; data: { url: string } }
-    if (data.success) {
-      const a = document.createElement('a')
-      a.href = data.data.url
-      a.download = filename
-      a.click()
-    }
+  const handleDownloadAttachment = (attId: string, filename: string) => {
+    // Backend streams the file directly — just navigate to the URL
+    const a = document.createElement('a')
+    a.href = `/api/attachments/${attId}/download`
+    a.download = filename
+    a.click()
   }
 
   const recipients = (() => {

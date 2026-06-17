@@ -25,6 +25,7 @@ export type Account = {
   webhook_secret: string
   ai_system_prompt: string
   auto_reply_enabled: number
+  ai_model: string
   created_at: string
   updated_at: string
 }

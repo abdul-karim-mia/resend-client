@@ -13,12 +13,34 @@ import { aiRoutes } from './routes/ai'
 import { attachmentRoutes } from './routes/attachments'
 import { templateRoutes } from './routes/templates'
 import { adminRoutes } from './routes/admin'
+import { ensureDbInitialized } from './db'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
+let dbChecked = false
+
+// Auto-initialize DB on first request
+app.use('*', async (c, next) => {
+  if (!dbChecked && c.env.DB) {
+    await ensureDbInitialized(c.env.DB)
+    dbChecked = true
+  }
+  await next()
+})
+
 // Global middleware
+// Note: credentials:true requires explicit origins, not '*'
 app.use('*', cors({
-  origin: '*',
+  origin: (origin) => {
+    // Allow same-origin requests (no Origin header) and trusted origins
+    if (!origin) return '*'
+    const allowed = [
+      'http://localhost:5173',
+      'http://localhost:8787',
+      'https://resend-client-worker.workers.dev',
+    ]
+    return allowed.includes(origin) ? origin : allowed[0]
+  },
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
@@ -34,6 +56,7 @@ app.use('/api/*', async (c, next) => {
   const jwtMiddleware = jwt({
     secret: c.env.JWT_SECRET,
     cookie: 'token',
+    alg: 'HS256',
   })
   return jwtMiddleware(c, next)
 })

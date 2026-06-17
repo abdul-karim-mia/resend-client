@@ -38,9 +38,11 @@ authRoutes.post('/login', zValidator('json', loginSchema), async (c) => {
   )
 
   // Set httpOnly cookie
+  // Note: Cloudflare production is always HTTPS; Secure flag is omitted here
+  // so local dev (HTTP) works. HttpOnly + SameSite=Lax provides CSRF protection.
   c.header(
     'Set-Cookie',
-    `token=${token}; HttpOnly; SameSite=Strict; Secure; Path=/; Max-Age=${60 * 60 * 24}`
+    `token=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${60 * 60 * 24}`
   )
 
   return c.json({ success: true, data: { username } })
@@ -48,7 +50,7 @@ authRoutes.post('/login', zValidator('json', loginSchema), async (c) => {
 
 // POST /api/auth/logout
 authRoutes.post('/logout', (c) => {
-  c.header('Set-Cookie', 'token=; HttpOnly; SameSite=Strict; Secure; Path=/; Max-Age=0')
+  c.header('Set-Cookie', 'token=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0')
   return c.json({ success: true, data: null })
 })
 
@@ -61,7 +63,7 @@ authRoutes.get('/me', async (c) => {
 
   try {
     const { verify } = await import('hono/jwt')
-    const payload = await verify(cookie, c.env.JWT_SECRET)
+    const payload = await verify(cookie, c.env.JWT_SECRET, 'HS256')
     return c.json({ success: true, data: { username: payload['sub'] } })
   } catch {
     return c.json({ success: false, error: 'Invalid or expired session' }, 401)
@@ -76,15 +78,13 @@ function getCookie(cookieHeader: string, name: string): string | null {
 }
 
 /**
- * Bcrypt-compatible password verification using Web Crypto API.
- * The ADMIN_PASSWORD_HASH should be a bcrypt hash generated during setup.
- * We implement a simplified constant-time comparison here.
- * For production, the hash should be generated via the setup script.
+ * Password verification using Web Crypto SHA-256.
+ * The ADMIN_PASSWORD_HASH secret must be a lowercase hex SHA-256 digest.
+ * Generate: node scripts/setup-secrets.mjs
+ *   or: node -e "const {createHash}=require('crypto'); console.log(createHash('sha256').update('yourpassword').digest('hex'))"
+ * Uses timing-safe comparison to prevent timing attacks.
  */
 async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
-  // Simple approach: store SHA-256 hash in the secret
-  // Setup script: echo -n "password" | sha256sum
-  // For bcrypt, use the setup script: node -e "const bcrypt = require('bcryptjs'); console.log(bcrypt.hashSync('yourpassword', 12))"
   try {
     const encoder = new TextEncoder()
     const data = encoder.encode(password)

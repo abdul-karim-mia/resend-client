@@ -4,18 +4,16 @@ node_modules/
 
 # Build outputs
 dist/
+frontend/dist/
 .wrangler/
 worker/dist/
 
 # Secrets — NEVER commit these
 .dev.vars
-worker/.dev.vars
 .env
 .env.local
 .env.*.local
 
-# Cloudflare
-.wrangler/
 
 # OS
 .DS_Store
@@ -33,3 +31,5 @@ Thumbs.db
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+.local

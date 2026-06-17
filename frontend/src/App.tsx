@@ -7,6 +7,7 @@ import { ShortcutsOverlay, useKeyboardShortcuts } from './components/Shortcuts'
 import { useAppStore } from './store'
 import { useAuth } from './queries'
 import LoginPage from './pages/Login'
+import AdminPanel from './components/AdminPanel'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -47,12 +48,18 @@ function AppShell() {
     return <LoginPage />
   }
 
+  const isAdminView = window.location.pathname === '/admin'
+
   return (
     <>
       <div className="app-shell">
         <Sidebar />
-        <EmailList />
-        <ReadingPane />
+        {isAdminView ? <AdminPanel /> : (
+          <>
+            <EmailList />
+            <ReadingPane />
+          </>
+        )}
       </div>
 
       {/* Composer */}

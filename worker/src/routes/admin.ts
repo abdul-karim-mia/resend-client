@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { nanoid } from 'nanoid'
-import { encryptApiKey, decryptApiKey, maskApiKey } from '../lib/crypto'
+import { encryptApiKey, decryptApiKey } from '../lib/crypto'
 import type { Bindings, Account } from '../types'
 
 export const adminRoutes = new Hono<{ Bindings: Bindings }>()
@@ -8,11 +8,11 @@ export const adminRoutes = new Hono<{ Bindings: Bindings }>()
 // GET /api/admin/accounts
 adminRoutes.get('/accounts', async (c) => {
   const { results } = await c.env.DB.prepare(`
-    SELECT id, name, domain, from_name, ai_system_prompt,
+    SELECT id, name, domain, from_name, webhook_secret, ai_system_prompt, ai_model,
            auto_reply_enabled, created_at,
            (SELECT COUNT(*) FROM emails e WHERE e.account_id = accounts.id) as email_count
     FROM accounts ORDER BY created_at DESC
-  `).all<Omit<Account, 'resend_api_key_enc' | 'webhook_secret'> & {
+  `).all<Omit<Account, 'resend_api_key_enc'> & {
     email_count: number
   }>()
 
@@ -28,6 +28,7 @@ adminRoutes.post('/accounts', async (c) => {
     resendApiKey: string
     aiSystemPrompt?: string
     autoReplyEnabled?: boolean
+    aiModel?: string
   }>()
 
   const id = `acc_${nanoid(12)}`
@@ -40,13 +41,14 @@ adminRoutes.post('/accounts', async (c) => {
     INSERT INTO accounts (
       id, name, domain, from_name,
       resend_api_key_enc, webhook_secret,
-      ai_system_prompt, auto_reply_enabled
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ai_system_prompt, auto_reply_enabled, ai_model
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     id, body.name, body.domain, body.fromName,
     encryptedKey, webhookSecret,
     body.aiSystemPrompt ?? 'You are a helpful customer support agent. Be concise, polite, and professional.',
-    body.autoReplyEnabled ? 1 : 0
+    body.autoReplyEnabled ? 1 : 0,
+    body.aiModel ?? '@cf/meta/llama-3.1-8b-instruct'
   ).run()
 
   // Return webhook URL and secret for user to configure in Resend
@@ -59,7 +61,6 @@ adminRoutes.post('/accounts', async (c) => {
       id,
       webhookUrl,
       webhookSecret,
-      maskedApiKey: maskApiKey(body.resendApiKey),
     },
   }, 201)
 })
@@ -79,7 +80,7 @@ adminRoutes.get('/accounts/:id', async (c) => {
     success: true,
     data: {
       ...account,
-      resend_api_key_enc: maskApiKey(account.resend_api_key_enc), // Never return raw encrypted key
+      resend_api_key_enc: '[encrypted]', // Never expose encrypted key material
       webhookUrl: `${workerUrl}/webhook/${id}/inbound`,
       eventsWebhookUrl: `${workerUrl}/webhook/${id}/events`,
     },
@@ -95,6 +96,7 @@ adminRoutes.put('/accounts/:id', async (c) => {
     resendApiKey?: string
     aiSystemPrompt?: string
     autoReplyEnabled?: boolean
+    aiModel?: string
   }>()
 
   // If updating API key, encrypt the new one
@@ -110,6 +112,7 @@ adminRoutes.put('/accounts/:id', async (c) => {
       resend_api_key_enc = COALESCE(?, resend_api_key_enc),
       ai_system_prompt = COALESCE(?, ai_system_prompt),
       auto_reply_enabled = COALESCE(?, auto_reply_enabled),
+      ai_model = COALESCE(?, ai_model),
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `).bind(
@@ -118,6 +121,7 @@ adminRoutes.put('/accounts/:id', async (c) => {
     encryptedKey,
     body.aiSystemPrompt ?? null,
     body.autoReplyEnabled !== undefined ? (body.autoReplyEnabled ? 1 : 0) : null,
+    body.aiModel ?? null,
     id
   ).run()
 

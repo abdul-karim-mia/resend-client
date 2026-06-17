@@ -10,7 +10,7 @@ aiRoutes.post('/draft-reply/:emailId', async (c) => {
 
   const row = await c.env.DB.prepare(`
     SELECT e.body_text, e.subject, e.sender_name, e.sender_email,
-           a.ai_system_prompt
+           a.ai_system_prompt, a.ai_model
     FROM emails e
     JOIN accounts a ON e.account_id = a.id
     WHERE e.id = ?
@@ -20,6 +20,7 @@ aiRoutes.post('/draft-reply/:emailId', async (c) => {
     sender_name: string | null
     sender_email: string
     ai_system_prompt: string
+    ai_model: string
   }>()
 
   if (!row) return c.json({ success: false, error: 'Email not found' }, 404)
@@ -31,7 +32,7 @@ Subject: ${row.subject ?? '(no subject)'}
 
 ${(row.body_text ?? '').slice(0, 3000)}`
 
-  const result = await (c.env.AI as Ai).run('@cf/meta/llama-3.1-8b-instruct', {
+  const result = await (c.env.AI as Ai).run(row.ai_model, {
     messages: [
       { role: 'system', content: row.ai_system_prompt },
       { role: 'user', content: prompt },
@@ -50,16 +51,18 @@ aiRoutes.post('/summarize/:threadId', async (c) => {
   const threadId = c.req.param('threadId')
 
   const { results } = await c.env.DB.prepare(`
-    SELECT body_text FROM emails
-    WHERE thread_id = ? AND body_text IS NOT NULL
-    ORDER BY created_at ASC LIMIT 5
-  `).bind(threadId).all<{ body_text: string }>()
+    SELECT e.body_text, a.ai_model FROM emails e
+    JOIN accounts a ON e.account_id = a.id
+    WHERE e.thread_id = ? AND e.body_text IS NOT NULL
+    ORDER BY e.created_at ASC LIMIT 5
+  `).bind(threadId).all<{ body_text: string; ai_model: string }>()
 
   if (results.length === 0) return c.json({ success: false, error: 'Thread not found' }, 404)
 
   const combined = results.map((r) => r.body_text).join('\n---\n').slice(0, 4000)
+  const model = results[0]?.ai_model ?? '@cf/meta/llama-3.1-8b-instruct'
 
-  const result = await (c.env.AI as Ai).run('@cf/meta/llama-3.1-8b-instruct', {
+  const result = await (c.env.AI as Ai).run(model, {
     messages: [
       {
         role: 'system',
@@ -78,13 +81,23 @@ aiRoutes.post('/summarize/:threadId', async (c) => {
 
 // POST /api/ai/adjust-tone — rewrite text with a different tone
 aiRoutes.post('/adjust-tone', async (c) => {
-  const { text, tone } = await c.req.json<{
+  const { text, tone, accountId } = await c.req.json<{
     text: string
     tone: 'formal' | 'casual' | 'concise'
+    accountId?: string
   }>()
 
   if (!text || !tone) {
     return c.json({ success: false, error: 'text and tone are required' }, 400)
+  }
+
+  let model = '@cf/meta/llama-3.1-8b-instruct'
+  if (accountId) {
+    const acc = await c.env.DB.prepare(`SELECT ai_model FROM accounts WHERE id = ?`).bind(accountId).first<{ ai_model: string }>()
+    if (acc) model = acc.ai_model
+  } else {
+    const acc = await c.env.DB.prepare(`SELECT ai_model FROM accounts LIMIT 1`).first<{ ai_model: string }>()
+    if (acc) model = acc.ai_model
   }
 
   const toneInstructions = {
@@ -93,7 +106,7 @@ aiRoutes.post('/adjust-tone', async (c) => {
     concise: 'Rewrite this email to be as concise as possible. Remove all filler words. Keep only the essential information.',
   }
 
-  const result = await (c.env.AI as Ai).run('@cf/meta/llama-3.1-8b-instruct', {
+  const result = await (c.env.AI as Ai).run(model, {
     messages: [
       { role: 'system', content: toneInstructions[tone] },
       { role: 'user', content: text.slice(0, 3000) },

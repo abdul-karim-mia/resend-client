@@ -16,8 +16,10 @@ export interface Account {
   name: string
   domain: string
   from_name: string
+  webhook_secret: string
   auto_reply_enabled: number
   ai_system_prompt: string
+  ai_model: string
   email_count: number
   created_at: string
 }
@@ -58,8 +60,10 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   })
 
   if (res.status === 401) {
-    // Session expired — reload to trigger redirect to /login
-    window.location.href = '/login'
+    // Session expired — reload to trigger redirect to /login (only if not already on /login)
+    if (window.location.pathname !== '/login') {
+      window.location.href = '/login'
+    }
     throw new Error('Unauthorized')
   }
 
@@ -75,6 +79,71 @@ export function useAccounts() {
     queryKey: ['accounts'],
     queryFn: () => apiFetch<Account[]>('/admin/accounts'),
     staleTime: 30_000,
+  })
+}
+
+export function useCreateAccount() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: {
+      name: string
+      domain: string
+      fromName: string
+      resendApiKey: string
+      aiSystemPrompt?: string
+      autoReplyEnabled?: boolean
+      aiModel?: string
+    }) =>
+      apiFetch<{
+        id: string
+        webhookUrl: string
+        webhookSecret: string
+        maskedApiKey: string
+      }>('/admin/accounts', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['accounts'] })
+    },
+  })
+}
+
+export function useUpdateAccount() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...payload
+    }: {
+      id: string
+      name?: string
+      fromName?: string
+      resendApiKey?: string
+      aiSystemPrompt?: string
+      autoReplyEnabled?: boolean
+      aiModel?: string
+    }) =>
+      apiFetch(`/admin/accounts/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['accounts'] })
+    },
+  })
+}
+
+export function useDeleteAccount() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/admin/accounts/${id}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['accounts'] })
+    },
   })
 }
 

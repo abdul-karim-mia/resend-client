@@ -6,7 +6,7 @@ export const attachmentRoutes = new Hono<{ Bindings: Bindings }>()
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024 // 25MB
 
-// GET /api/attachments/:id/download — pre-signed R2 URL (1h expiry)
+// GET /api/attachments/:id/download — stream file from R2
 attachmentRoutes.get('/:id/download', async (c) => {
   const id = c.req.param('id')
 
@@ -16,23 +16,20 @@ attachmentRoutes.get('/:id/download', async (c) => {
 
   if (!attachment) return c.json({ success: false, error: 'Attachment not found' }, 404)
 
-  // Check object exists in R2
-  const object = await c.env.R2.head(attachment.r2_object_key)
+  // Stream directly from R2
+  const object = await c.env.R2.get(attachment.r2_object_key)
   if (!object) return c.json({ success: false, error: 'File not found in storage' }, 404)
 
-  // R2 presigned URLs — use createSignedUrl with 1hr expiry
-  // Note: R2.createPresignedUrl is available via the R2 binding
-  const url = await c.env.R2.createSignedUrl({
-    key: attachment.r2_object_key,
-    expiresIn: 3600,
-    method: 'GET',
-  } as Parameters<R2Bucket['createSignedUrl']>[0])
+  const safeFilename = encodeURIComponent(attachment.filename)
 
-  return c.json(
-    { success: true, data: { url, filename: attachment.filename } },
-    200,
-    { 'Cache-Control': 'no-store, max-age=0' } // Never cache presigned URLs
-  )
+  return new Response(object.body, {
+    headers: {
+      'Content-Type': attachment.content_type ?? 'application/octet-stream',
+      'Content-Disposition': `attachment; filename="${safeFilename}"`,
+      'Cache-Control': 'private, max-age=3600',
+      'Content-Length': object.size.toString(),
+    },
+  })
 })
 
 // POST /api/attachments/upload — upload file to R2 (for outbound sending)

@@ -1,6 +1,10 @@
 -- ============================================================
 -- resend-client D1 Schema
 -- Run: pnpm db:apply (local) or pnpm db:apply:remote (production)
+--
+-- ⚠️  IMPORTANT: Keep in sync with worker/src/db.ts (ensureDbInitialized)
+--    db.ts is the source of truth for auto-initialization in production.
+--    If you add/modify tables here, update db.ts as well.
 -- ============================================================
 
 -- Accounts / Workspaces
@@ -13,6 +17,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     webhook_secret      TEXT NOT NULL,
     ai_system_prompt    TEXT NOT NULL DEFAULT 'You are a helpful customer support agent. Be concise, polite, and professional.',
     auto_reply_enabled  INTEGER NOT NULL DEFAULT 0,
+    ai_model            TEXT NOT NULL DEFAULT '@cf/meta/llama-3.1-8b-instruct',
     created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP
 );

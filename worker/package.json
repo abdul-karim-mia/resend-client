@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "wrangler dev --remote",
-    "deploy": "wrangler deploy --env=\"\"",
-    "types": "wrangler types",
-    "db:apply": "wrangler d1 execute resend-client-db --local --file=./schema.sql",
-    "db:apply:remote": "wrangler d1 execute resend-client-db --remote --file=./schema.sql"
+    "dev": "wrangler dev --remote --config ../wrangler.jsonc",
+    "deploy": "wrangler deploy --env=\"\" --config ../wrangler.jsonc",
+    "types": "wrangler types --config ../wrangler.jsonc worker-configuration.d.ts",
+    "db:apply": "wrangler d1 execute resend-client-db --local --file=./schema.sql --config ../wrangler.jsonc",
+    "db:apply:remote": "wrangler d1 execute resend-client-db --remote --file=./schema.sql --config ../wrangler.jsonc"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.8.0",

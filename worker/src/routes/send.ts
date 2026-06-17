@@ -62,7 +62,10 @@ sendRoutes.post('/', async (c) => {
         const obj = await c.env.R2.get(key)
         if (obj) {
           const buffer = await obj.arrayBuffer()
-          const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)))
+          // Use reduce to avoid RangeError on large files (spread fails >~1MB)
+          const base64 = btoa(
+            new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+          )
           attachments.push({
             filename: key.split('/').pop() ?? 'attachment',
             content: base64,
@@ -74,20 +77,20 @@ sendRoutes.post('/', async (c) => {
     }
   }
 
-  // Send via Resend
+  // Send via Resend — use conditional spread for optional fields (exactOptionalPropertyTypes safe)
   const { data, error } = await resend.emails.send({
     from: `${account.from_name} <noreply@${account.domain}>`,
     to,
-    cc: cc ?? undefined,
-    bcc: bcc ?? undefined,
+    ...(cc ? { cc } : {}),
+    ...(bcc ? { bcc } : {}),
     subject,
     html,
-    text: text ?? undefined,
+    ...(text ? { text } : {}),
     headers: {
       ...(inReplyTo ? { 'In-Reply-To': inReplyTo } : {}),
       ...(references ? { References: references } : {}),
     },
-    attachments: attachments.length > 0 ? attachments : undefined,
+    ...(attachments.length > 0 ? { attachments } : {}),
   })
 
   if (error) {

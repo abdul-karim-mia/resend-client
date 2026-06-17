@@ -36,13 +36,36 @@
 
 ---
 
-## Quick Start
+## Deploy to Cloudflare (One-Click)
 
-### Prerequisites
+Click the button above — Cloudflare will:
+1. Fork this repo to your GitHub account
+2. Show a setup form to **select or create** your D1 database and R2 bucket
+3. Prompt you for the required secrets (see below)
+4. Build and deploy automatically
 
-- [Cloudflare account](https://dash.cloudflare.com) (free tier works)
-- [Resend account](https://resend.com) with at least one verified domain
-- Node.js 20+ and pnpm 9+
+> **⚡ Zero SQL needed** — the database schema is created automatically on the first request.
+
+### Required Secrets for Deploy
+
+Before clicking deploy, run the setup script to generate all required values:
+
+```bash
+node scripts/setup-secrets.mjs
+```
+
+This generates and writes your `.dev.vars` for local dev, and prints the values you need to paste into the Cloudflare deploy form:
+
+| Secret | Description |
+|---|---|
+| `MASTER_ENCRYPTION_KEY` | AES-256 key for encrypting Resend API keys |
+| `JWT_SECRET` | Signs admin session tokens |
+| `ADMIN_USERNAME` | Your admin panel login username |
+| `ADMIN_PASSWORD_HASH` | SHA-256 hash of your admin password |
+
+---
+
+## Manual Deploy
 
 ### 1. Clone & Install
 
@@ -55,54 +78,41 @@ pnpm install
 ### 2. Create Cloudflare Resources
 
 ```bash
-cd worker
-
 # Create D1 database
 npx wrangler d1 create resend-client-db
-
-# Copy the database_id from the output and update wrangler.jsonc
-# Replace "PLACEHOLDER_REPLACE_WITH_REAL_ID" with your actual ID
+# → Copy the database_id into wrangler.jsonc
 
 # Create R2 bucket
 npx wrangler r2 bucket create resend-client-attachments
-
-# Apply database schema
-npx wrangler d1 execute resend-client-db --remote --file=./schema.sql
 ```
 
-### 3. Generate & Set Secrets
+> **No schema step needed** — the database tables are created automatically on first request.
+
+### 3. Generate & Push Secrets
 
 ```bash
-# Generate your secrets
-node ../scripts/setup-secrets.mjs
+# Interactive setup — writes .dev.vars + prints wrangler secret bulk JSON
+node scripts/setup-secrets.mjs
 
-# Set each secret in Cloudflare Workers
-npx wrangler secret put MASTER_ENCRYPTION_KEY
-npx wrangler secret put JWT_SECRET
-npx wrangler secret put ADMIN_USERNAME
-npx wrangler secret put ADMIN_PASSWORD_HASH
+# Push all secrets at once
+echo '{...paste JSON output from setup script...}' | npx wrangler secret bulk --config wrangler.jsonc
 ```
 
 ### 4. Build & Deploy
 
 ```bash
-cd ..
-pnpm build    # Builds the React frontend
-pnpm deploy   # Deploys everything to Cloudflare Workers
+pnpm build    # Builds the React frontend into frontend/dist/
+pnpm deploy   # Deploys Worker + assets to Cloudflare
 ```
 
 Your app is now live at `https://resend-client-worker.<your-subdomain>.workers.dev`
 
 ### 5. Configure Resend Webhooks
 
-For each domain you want to receive email on:
-
-1. Go to **Admin** panel in your deployed app
-2. Click **+ Add Account**
-3. Copy the generated **Webhook URL** and **Webhook Secret**
-4. In Resend dashboard → **Webhooks** → Add endpoint:
-   - URL: `https://your-worker.workers.dev/webhook/<accountId>/inbound`
-   - Events: `email.received` (inbound), `email.sent`, `email.delivered`, `email.bounced`
+1. Open the deployed app → **Admin** panel → **+ Add Account**
+2. Copy the generated **Webhook URL** and **Webhook Secret**
+3. In Resend dashboard → **Webhooks** → Add endpoint with those values
+4. Subscribe to: `email.received`, `email.sent`, `email.delivered`, `email.bounced`
 
 See [docs/setup.md](docs/setup.md) for detailed DNS/MX configuration.
 
@@ -111,28 +121,33 @@ See [docs/setup.md](docs/setup.md) for detailed DNS/MX configuration.
 ## Local Development
 
 ```bash
-# Copy secrets template
-cp worker/.dev.vars.example worker/.dev.vars
-# Fill in real values in .dev.vars
+# Generate secrets and write .dev.vars automatically
+node scripts/setup-secrets.mjs
 
-# Apply schema locally
-pnpm db:apply
-
-# Start both dev servers
+# Start both dev servers (worker on :8787, frontend on :5173)
 pnpm dev
 ```
 
 Frontend runs at `http://localhost:5173`, proxied to the Worker at `http://localhost:8787`.
 
+> **No schema step needed** — on first request, the Worker auto-initializes all D1 tables.
+
 ---
 
 ## Deploying with GitHub Actions
 
-The included `.github/workflows/deploy.yml` automatically deploys on every push to `main`.
+The included `.github/workflows/deploy.yml` automatically builds and deploys on every push to `main`.
 
-Add these secrets to your GitHub repository settings:
-- `CLOUDFLARE_API_TOKEN` — from [Cloudflare dashboard → My Profile → API Tokens](https://dash.cloudflare.com/profile/api-tokens)
-- `CLOUDFLARE_ACCOUNT_ID` — from Cloudflare dashboard right sidebar
+Add these **6 secrets** to your GitHub repository (Settings → Secrets → Actions):
+
+| Secret | Where to get it |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | [Cloudflare → My Profile → API Tokens](https://dash.cloudflare.com/profile/api-tokens) |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard right sidebar |
+| `MASTER_ENCRYPTION_KEY` | Output of `node scripts/setup-secrets.mjs` |
+| `JWT_SECRET` | Output of `node scripts/setup-secrets.mjs` |
+| `ADMIN_USERNAME` | Your chosen admin username |
+| `ADMIN_PASSWORD_HASH` | Output of `node scripts/setup-secrets.mjs` |
 
 ---
 
@@ -146,15 +161,12 @@ Add these secrets to your GitHub repository settings:
 
 ## Changing Your Password
 
-To update the admin password after initial setup:
-
 ```bash
-# Generate new hash
-node -e "const {createHash}=require('crypto'); console.log(createHash('sha256').update('YOUR_NEW_PASSWORD').digest('hex'));"
+# Re-run setup (backs up existing .dev.vars)
+node scripts/setup-secrets.mjs
 
-# Update the secret
-cd worker
-npx wrangler secret put ADMIN_PASSWORD_HASH
+# Push updated hash to production
+echo '{"ADMIN_PASSWORD_HASH":"<new-hash>"}' | npx wrangler secret bulk --config wrangler.jsonc
 ```
 
 ---
