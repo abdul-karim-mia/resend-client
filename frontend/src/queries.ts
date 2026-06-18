@@ -39,6 +39,7 @@ export interface Email {
   account_id: string
   thread_id: string
   message_id: string | null
+  in_reply_to: string | null
   folder: string
   direction: 'inbound' | 'outbound'
   sender_name: string | null
@@ -99,7 +100,7 @@ export function useCreateAccount() {
       name: string
       domain: string
       fromName: string
-      fromEmail?: string          // optional custom sender address
+      fromEmail?: string
       resendApiKey: string
       aiSystemPrompt?: string
       autoReplyEnabled?: boolean
@@ -131,7 +132,7 @@ export function useUpdateAccount() {
       id: string
       name?: string
       fromName?: string
-      fromEmail?: string | null   // null = revert to default noreply@
+      fromEmail?: string | null
       resendApiKey?: string
       aiSystemPrompt?: string
       autoReplyEnabled?: boolean
@@ -210,7 +211,6 @@ export function useSetDefaultSender(accountId: string) {
 // ── All senders across all accounts (for Composer From dropdown) ──
 
 export function useAllSenders(accounts: Account[] | undefined) {
-  // Fetch senders for each account, combine into a flat list
   return useQuery({
     queryKey: ['all-senders', accounts?.map((a) => a.id)],
     queryFn: async () => {
@@ -229,6 +229,7 @@ export function useAllSenders(accounts: Account[] | undefined) {
   })
 }
 
+// ── Emails ────────────────────────────────────────────────────
 
 export function useEmails(
   accountId: string | null,
@@ -313,6 +314,7 @@ export function useSendEmail() {
       accountId: string
       to: string[]
       cc?: string[]
+      bcc?: string[]
       subject: string
       html?: string
       text?: string
@@ -320,8 +322,8 @@ export function useSendEmail() {
       templateId?: string
       templateVariables?: Record<string, string | number>
       attachmentKeys?: string[]
-      senderName?: string    // selected sender identity name
-      senderEmail?: string   // selected sender identity email
+      senderName?: string
+      senderEmail?: string
     }) => apiFetch('/send', { method: 'POST', body: JSON.stringify(payload) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['emails'] })
@@ -329,7 +331,24 @@ export function useSendEmail() {
   })
 }
 
-// ── AI ────────────────────────────────────────────────────────
+// Save or update a draft — returns the draft emailId
+export function useSaveDraft() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: {
+      accountId: string
+      to?: string[]
+      subject?: string
+      html?: string
+      existingDraftId?: string
+    }) => apiFetch<{ id: string }>('/send/draft', { method: 'POST', body: JSON.stringify(payload) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['emails'] })
+    },
+  })
+}
+
+// ── Resend Templates ──────────────────────────────────────────
 
 export interface ResendTemplate {
   id: string
@@ -363,22 +382,14 @@ export function useResendTemplate(accountId: string | null, templateId: string |
   })
 }
 
-export function useQuickReplySuggestions() {
-  return useMutation({
-    mutationFn: ({ emailId, accountId }: { emailId: string; accountId: string }) =>
-      apiFetch<{ suggestions: string[] }>('/ai/quick-reply-suggestions', {
-        method: 'POST',
-        body: JSON.stringify({ emailId, accountId }),
-      }),
-  })
-}
+// ── AI ────────────────────────────────────────────────────────
 
-export function useAIDraftReply(emailId: string | null) {
-  return useQuery({
-    queryKey: ['ai-draft', emailId],
-    queryFn: () =>
+// Generate an AI draft reply for a specific email.
+// Uses useMutation (POST operation) — call mutateAsync(emailId) to trigger.
+export function useAIDraftReply() {
+  return useMutation({
+    mutationFn: (emailId: string) =>
       apiFetch<{ draft: string }>(`/ai/draft-reply/${emailId}`, { method: 'POST' }),
-    enabled: false, // Only fetches when explicitly triggered via refetch()
   })
 }
 
@@ -395,6 +406,28 @@ export function useAIAdjustTone() {
       apiFetch<{ result: string }>('/ai/adjust-tone', {
         method: 'POST',
         body: JSON.stringify(payload),
+      }),
+  })
+}
+
+// Apply a free-form AI instruction to the current email body.
+// Used by the Composer's "Custom Prompt" panel.
+export function useAICustomPrompt() {
+  return useMutation({
+    mutationFn: (payload: { text: string; prompt: string; accountId?: string }) =>
+      apiFetch<{ result: string }>('/ai/custom-prompt', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+  })
+}
+
+export function useQuickReplySuggestions() {
+  return useMutation({
+    mutationFn: ({ emailId, accountId }: { emailId: string; accountId: string }) =>
+      apiFetch<{ suggestions: string[] }>('/ai/quick-reply-suggestions', {
+        method: 'POST',
+        body: JSON.stringify({ emailId, accountId }),
       }),
   })
 }

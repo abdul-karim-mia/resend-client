@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useAppStore } from '../store'
 import {
-  useSendEmail, useAIAdjustTone, useAIDraftReply,
+  useSendEmail, useAIAdjustTone, useAIDraftReply, useAICustomPrompt,
   useResendTemplates, useResendTemplate, useAccounts, useAllSenders,
+  useEmail, useSaveDraft,
 } from '../queries'
 
 interface ComposerProps {
@@ -16,12 +17,15 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
   const addToast = useAppStore((s) => s.addToast)
   const sendEmail = useSendEmail()
   const adjustTone = useAIAdjustTone()
+  const aiCustomPrompt = useAICustomPrompt()
+  const aiDraft = useAIDraftReply()
+  const saveDraft = useSaveDraft()
 
   // Account + sender selector
   const { data: accounts = [] } = useAccounts()
   const { data: allSenders = [] } = useAllSenders(accounts)
   const [fromAccountId, setFromAccountId] = useState(defaultAccountId)
-  // selectedSenderId = "accountId::name::email" composite key
+  // selectedSenderKey = "accountId::name::email" composite key
   const [selectedSenderKey, setSelectedSenderKey] = useState<string>('')
 
   // Derive actual sender info from the selected key
@@ -33,7 +37,6 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
   // Auto-select default sender when senders load
   useEffect(() => {
     if (!selectedSenderKey && allSenders.length > 0) {
-      // Find default sender for current account, or fall back to first sender
       const accountSenders = allSenders.filter((s) => s.account_id === fromAccountId)
       const def = accountSenders.find((s) => s.is_default === 1) ?? accountSenders[0]
       if (def) {
@@ -42,17 +45,19 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
     }
   }, [allSenders, fromAccountId, selectedSenderKey])
 
-  // Fields
+  // ── Fields ────────────────────────────────────────────────────────────────
   const [to, setTo] = useState('')
   const [cc, setCc] = useState('')
   const [bcc, setBcc] = useState('')
   const [subject, setSubject] = useState('')
-  const [body] = useState(replyToEmailId
-    ? '<p></p><br/><blockquote style="border-left:3px solid #ccc;padding-left:12px;color:#666;margin:0"></blockquote>'
-    : '')
   const [showCc, setShowCc] = useState(false)
   const [showBcc, setShowBcc] = useState(false)
   const [sending, setSending] = useState(false)
+
+  // Draft tracking
+  const [draftId, setDraftId] = useState<string | null>(null)
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hasContentRef = useRef(false)
 
   // Attachments
   const [attachedFiles, setAttachedFiles] = useState<Array<{ key: string; filename: string }>>([])
@@ -66,7 +71,6 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiOutput, setAiOutput] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
-  const aiDraft = useAIDraftReply(replyToEmailId ?? null)
 
   // Resend templates
   const { data: resendTemplates = [] } = useResendTemplates(fromAccountId)
@@ -75,26 +79,142 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
   // Editor ref (contenteditable)
   const editorRef = useRef<HTMLDivElement>(null)
 
+  // ── Fetch parent email for reply quoting ─────────────────────────────────
+  const { data: parentEmail } = useEmail(replyToEmailId ?? null)
+
+  // Pick up pre-filled text from QuickReply "Edit" chip (stored in sessionStorage)
+  useEffect(() => {
+    const prefill = sessionStorage.getItem('composer:prefill')
+    if (prefill && editorRef.current) {
+      sessionStorage.removeItem('composer:prefill')
+      editorRef.current.innerHTML = `<p>${prefill.replace(/\n/g, '<br>')}</p>`
+    }
+  // Only run on initial mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Initialize editor HTML — set once on mount (avoids dangerouslySetInnerHTML + state conflict)
+  useEffect(() => {
+    if (!editorRef.current) return
+    if (replyToEmailId && parentEmail) {
+      // Gmail-style reply quoting: cursor at top, quoted original below
+      const senderDisplay = parentEmail.sender_name
+        ? `${parentEmail.sender_name} &lt;${parentEmail.sender_email}&gt;`
+        : parentEmail.sender_email
+      const dateStr = new Date(parentEmail.created_at).toLocaleString([], {
+        weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      })
+      // Use plain text body if no HTML, strip scripts from HTML if present
+      const quotedContent = parentEmail.body_html
+        ? parentEmail.body_html
+          .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+          .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+        : (parentEmail.body_text ?? '').replace(/\n/g, '<br>')
+
+      editorRef.current.innerHTML = `<p><br></p><div style="border-left:3px solid var(--border-hover,#555);padding-left:14px;margin:8px 0;color:var(--text-muted)"><p style="font-size:12px;margin-bottom:8px"><strong>On ${dateStr}, ${senderDisplay} wrote:</strong></p>${quotedContent}</div>`
+    } else if (!replyToEmailId) {
+      editorRef.current.innerHTML = ''
+    }
+    // Place cursor at the very beginning
+    const range = document.createRange()
+    const sel = window.getSelection()
+    range.setStart(editorRef.current, 0)
+    range.collapse(true)
+    sel?.removeAllRanges()
+    sel?.addRange(range)
+    editorRef.current.focus()
+  // Only re-run when parentEmail loads (avoid re-init on every keystroke)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parentEmail, replyToEmailId])
+
+  // Auto-fill subject for replies
+  useEffect(() => {
+    if (replyToEmailId && parentEmail && !subject) {
+      const raw = parentEmail.subject ?? ''
+      setSubject(raw.startsWith('Re:') ? raw : `Re: ${raw}`)
+    }
+    if (replyToEmailId && parentEmail && !to) {
+      setTo(parentEmail.sender_email)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parentEmail, replyToEmailId])
+
   // Auto-fill from template
   useEffect(() => {
     if (!templateDetail) return
     if (templateDetail.subject) setSubject(templateDetail.subject)
-    // Extract variable keys from template
     const vars: Record<string, string> = {}
     templateDetail.variables?.forEach((v) => { vars[v.key] = '' })
     setTemplateVars(vars)
   }, [templateDetail])
 
+  // ── Draft auto-save (30s debounce on content change) ─────────────────────
+  const scheduleDraftSave = useCallback(() => {
+    if (templateMode) return // Don't auto-save template mode
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
+    draftTimerRef.current = setTimeout(async () => {
+      const html = editorRef.current?.innerHTML ?? ''
+      if (!html || html === '<br>') return
+      hasContentRef.current = true
+      try {
+        const result = await saveDraft.mutateAsync({
+          accountId: fromAccountId,
+          to: to ? to.split(',').map((t) => t.trim()).filter(Boolean) : [],
+          subject: subject || undefined,
+          html,
+          existingDraftId: draftId ?? undefined,
+        })
+        if (!draftId) setDraftId(result.id)
+      } catch {
+        // Silent — draft save failures should not disrupt the user
+      }
+    }, 30_000)
+  }, [templateMode, fromAccountId, to, subject, draftId, saveDraft])
+
+  // Track content changes for hasContentRef
+  const handleEditorInput = useCallback(() => {
+    hasContentRef.current = !!(editorRef.current?.innerText?.trim())
+    scheduleDraftSave()
+  }, [scheduleDraftSave])
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
+    }
+  }, [])
+
+  // ── Close with "Save draft?" guard ───────────────────────────────────────
+  const handleClose = useCallback(() => {
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
+    const html = editorRef.current?.innerHTML ?? ''
+    const hasBody = !!(html && html !== '<br>' && editorRef.current?.innerText?.trim())
+
+    if (hasBody && !draftId) {
+      // Ask user — Save draft or discard?
+      if (window.confirm('Save this email as a draft?')) {
+        saveDraft.mutate({
+          accountId: fromAccountId,
+          to: to ? to.split(',').map((t) => t.trim()).filter(Boolean) : [],
+          subject: subject || undefined,
+          html,
+        })
+      }
+    }
+    close()
+  }, [close, draftId, fromAccountId, to, subject, saveDraft])
+
   // Escape to close
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close()
+      if (e.key === 'Escape') handleClose()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [close])
+  }, [handleClose])
 
-  // Image upload handler
+  // ── Image upload / drag-drop ──────────────────────────────────────────────
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     noClick: true,
     onDrop: async (files) => {
@@ -103,29 +223,20 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
           addToast(`${file.name} exceeds 25MB`, 'error')
           continue
         }
-        // Images dropped onto body → upload to R2 and insert inline
-        if (file.type.startsWith('image/')) {
-          const form = new FormData()
-          form.append('file', file)
-          const res = await fetch(`/api/attachments/upload?accountId=${fromAccountId}`, {
-            method: 'POST', credentials: 'include', body: form,
-          })
-          const data = await res.json() as { success: boolean; data: { key: string; filename: string; url?: string } }
-          if (data.success && editorRef.current) {
+        const form = new FormData()
+        form.append('file', file)
+        const res = await fetch(`/api/attachments/upload?accountId=${fromAccountId}`, {
+          method: 'POST', credentials: 'include', body: form,
+        })
+        const data = await res.json() as { success: boolean; data: { key: string; filename: string; url?: string } }
+        if (data.success) {
+          if (file.type.startsWith('image/') && editorRef.current) {
+            // Embed inline image
             const url = `/api/attachments/${data.data.key}/download`
             document.execCommand('insertHTML', false,
               `<img src="${url}" alt="${data.data.filename}" style="max-width:100%;height:auto;border-radius:4px;margin:8px 0" />`)
-            setAttachedFiles((p) => [...p, { key: data.data.key, filename: data.data.filename }])
           }
-        } else {
-          // Non-image: regular attachment
-          const form = new FormData()
-          form.append('file', file)
-          const res = await fetch(`/api/attachments/upload?accountId=${fromAccountId}`, {
-            method: 'POST', credentials: 'include', body: form,
-          })
-          const data = await res.json() as { success: boolean; data: { key: string; filename: string } }
-          if (data.success) setAttachedFiles((p) => [...p, data.data])
+          setAttachedFiles((p) => [...p, { key: data.data.key, filename: data.data.filename }])
         }
       }
     },
@@ -133,19 +244,24 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
 
   const getEditorHtml = () => editorRef.current?.innerHTML ?? ''
 
+  // ── Send ──────────────────────────────────────────────────────────────────
   const handleSend = async () => {
     if (!to || !subject) return
     setSending(true)
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
+
     const parsed = selectedSenderKey ? parseSenderKey(selectedSenderKey) : null
     const resolvedAccountId = parsed?.accountId ?? fromAccountId
     const resolvedSenderName = parsed?.senderName
     const resolvedSenderEmail = parsed?.senderEmail
+
     try {
       if (templateMode && selectedTemplateId) {
         await sendEmail.mutateAsync({
           accountId: resolvedAccountId,
           to: to.split(',').map((t) => t.trim()).filter(Boolean),
           cc: cc ? cc.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
+          bcc: bcc ? bcc.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
           subject,
           templateId: selectedTemplateId,
           templateVariables: Object.fromEntries(Object.entries(templateVars).map(([k, v]) => [k, v])),
@@ -164,6 +280,7 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
           accountId: resolvedAccountId,
           to: to.split(',').map((t) => t.trim()).filter(Boolean),
           cc: cc ? cc.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
+          bcc: bcc ? bcc.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
           subject,
           html,
           attachmentKeys: attachedFiles.map((f) => f.key),
@@ -181,9 +298,13 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
     }
   }
 
+  // ── AI — Tone adjustment ──────────────────────────────────────────────────
   const handleTone = async (tone: 'formal' | 'casual' | 'concise') => {
     const text = editorRef.current?.innerText ?? ''
-    if (!text.trim()) return
+    if (!text.trim()) {
+      addToast('Write something first, then adjust the tone', 'info')
+      return
+    }
     try {
       setAiLoading(true)
       const result = await adjustTone.mutateAsync({ text, tone, accountId: fromAccountId })
@@ -195,42 +316,56 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
     }
   }
 
+  // ── AI — Generate draft reply (reply mode) ────────────────────────────────
   const handleGenerateDraft = async () => {
     if (!replyToEmailId) return
     setAiLoading(true)
     try {
-      const result = await aiDraft.refetch()
-      if (result.data?.draft && editorRef.current) {
-        editorRef.current.innerHTML = result.data.draft.replace(/\n/g, '<br>')
+      const result = await aiDraft.mutateAsync(replyToEmailId)
+      if (result.draft && editorRef.current) {
+        // Insert draft above the quoted reply block
+        const draft = result.draft.replace(/\n/g, '<br>')
+        const currentHtml = editorRef.current.innerHTML
+        // Find the blockquote/divider and place draft before it
+        if (currentHtml.includes('border-left')) {
+          const quoteStart = currentHtml.indexOf('<div style="border-left')
+          editorRef.current.innerHTML =
+            `<p>${draft}</p><br>` + currentHtml.slice(quoteStart)
+        } else {
+          editorRef.current.innerHTML = `<p>${draft}</p>`
+        }
       }
+    } catch {
+      addToast('Failed to generate draft', 'error')
     } finally {
       setAiLoading(false)
     }
   }
 
+  // ── AI — Custom free-form prompt ──────────────────────────────────────────
   const handleCustomAI = useCallback(async () => {
     if (!aiPrompt.trim()) return
     setAiLoading(true)
     const bodyText = editorRef.current?.innerText ?? ''
     try {
-      const res = await fetch('/api/ai/adjust-tone', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: bodyText || aiPrompt, tone: 'formal', accountId: fromAccountId }),
+      const result = await aiCustomPrompt.mutateAsync({
+        text: bodyText,
+        prompt: aiPrompt,
+        accountId: fromAccountId,
       })
-      const data = await res.json() as { success: boolean; data: { result: string } }
-      if (data.success) setAiOutput(data.data.result)
+      if (result.result) setAiOutput(result.result)
     } catch {
       addToast('AI request failed', 'error')
     } finally {
       setAiLoading(false)
     }
-  }, [aiPrompt, fromAccountId, addToast])
+  }, [aiPrompt, fromAccountId, addToast, aiCustomPrompt])
 
   const applyAiOutput = () => {
     if (editorRef.current && aiOutput) {
       editorRef.current.innerHTML = aiOutput.replace(/\n/g, '<br>')
       setAiOutput('')
+      setAiPrompt('')
     }
   }
 
@@ -245,7 +380,7 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
           backdropFilter: 'blur(4px)', zIndex: 299,
           animation: 'fadeIn 0.15s ease',
         }}
-        onClick={close}
+        onClick={handleClose}
       />
 
       {/* Fullscreen modal */}
@@ -281,6 +416,11 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
             <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
               {replyToEmailId ? '↩ Reply' : 'New Message'}
             </span>
+            {draftId && (
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--bg-overlay)', padding: '2px 8px', borderRadius: 'var(--radius-full)', border: '1px solid var(--border)' }}>
+                Draft saved
+              </span>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <button
@@ -294,7 +434,7 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
             </button>
             <button
               className="btn-icon btn"
-              onClick={close}
+              onClick={handleClose}
               aria-label="Close composer"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -318,7 +458,6 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
                   value={selectedSenderKey}
                   onChange={(e) => {
                     setSelectedSenderKey(e.target.value)
-                    // Keep fromAccountId in sync (for template/attachment uploads)
                     const parsed = parseSenderKey(e.target.value)
                     if (parsed.accountId) setFromAccountId(parsed.accountId)
                   }}
@@ -329,7 +468,6 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
                   aria-label="From sender"
                 >
                   {allSenders.length > 0 ? (
-                    // Group by account
                     accounts.map((acc) => {
                       const senders = allSenders.filter((s) => s.account_id === acc.id)
                       if (senders.length === 0) return null
@@ -348,7 +486,6 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
                       )
                     })
                   ) : (
-                    // Fallback: no senders configured — show accounts
                     accounts.map((acc) => (
                       <option key={acc.id} value={`${acc.id}::${acc.from_name}::${acc.from_email ?? `noreply@${acc.domain}`}`} style={{ background: 'var(--bg-surface)' }}>
                         {acc.from_name} &lt;{acc.from_email ?? `noreply@${acc.domain}`}&gt;
@@ -505,7 +642,7 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
                   ref={editorRef}
                   contentEditable
                   suppressContentEditableWarning
-                  dangerouslySetInnerHTML={{ __html: body }}
+                  onInput={handleEditorInput}
                   style={{
                     minHeight: '100%', outline: 'none',
                     padding: '20px 24px',
@@ -594,7 +731,7 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
                 </label>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-ghost" style={{ color: 'var(--text-muted)' }} onClick={close}>Discard</button>
+                <button className="btn btn-ghost" style={{ color: 'var(--text-muted)' }} onClick={handleClose}>Discard</button>
                 <button
                   className="btn btn-primary"
                   onClick={handleSend}
@@ -680,7 +817,7 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
                 <textarea
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
-                  placeholder="Make it more professional, add a call to action…"
+                  placeholder="Make it more professional, add a call to action, translate to Spanish…"
                   rows={3}
                   style={{
                     width: '100%', boxSizing: 'border-box',
@@ -699,6 +836,7 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
                 >
                   {aiLoading ? '…' : 'Run ↗'}
                 </button>
+                <p style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, textAlign: 'center' }}>Ctrl+Enter to run</p>
               </div>
 
               {/* AI output */}
@@ -713,13 +851,23 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
                   }}>
                     {aiOutput}
                   </div>
-                  <button
-                    className="btn btn-primary"
-                    style={{ width: '100%', marginTop: 8, fontSize: 12 }}
-                    onClick={applyAiOutput}
-                  >
-                    Apply to Editor
-                  </button>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                    <button
+                      className="btn btn-primary"
+                      style={{ flex: 1, fontSize: 12 }}
+                      onClick={applyAiOutput}
+                    >
+                      Apply to Editor
+                    </button>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ fontSize: 12, padding: '5px 10px' }}
+                      onClick={() => { setAiOutput(''); setAiPrompt('') }}
+                      title="Discard result"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
