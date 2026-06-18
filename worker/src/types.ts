@@ -21,6 +21,7 @@ export type Account = {
   name: string
   domain: string
   from_name: string
+  from_email: string | null  // e.g. support@domain.com — falls back to noreply@domain if null
   resend_api_key_enc: string
   webhook_secret: string
   ai_system_prompt: string
@@ -28,6 +29,15 @@ export type Account = {
   ai_model: string
   created_at: string
   updated_at: string
+}
+
+export type AccountSender = {
+  id: string
+  account_id: string
+  name: string
+  email: string
+  is_default: number
+  created_at: string
 }
 
 export type Email = {

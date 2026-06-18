@@ -16,11 +16,21 @@ export interface Account {
   name: string
   domain: string
   from_name: string
+  from_email: string | null
   webhook_secret: string
   auto_reply_enabled: number
   ai_system_prompt: string
   ai_model: string
   email_count: number
+  created_at: string
+}
+
+export interface AccountSender {
+  id: string
+  account_id: string
+  name: string
+  email: string
+  is_default: number
   created_at: string
 }
 
@@ -77,7 +87,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 export function useAccounts() {
   return useQuery({
     queryKey: ['accounts'],
-    queryFn: () => apiFetch<Account[]>('/admin/accounts'),
+    queryFn: () => apiFetch<Account[]>('/settings/accounts'),
     staleTime: 30_000,
   })
 }
@@ -89,17 +99,19 @@ export function useCreateAccount() {
       name: string
       domain: string
       fromName: string
+      fromEmail?: string          // optional custom sender address
       resendApiKey: string
       aiSystemPrompt?: string
       autoReplyEnabled?: boolean
       aiModel?: string
+      senders?: Array<{ name: string; email: string; isDefault?: boolean }>
     }) =>
       apiFetch<{
         id: string
         webhookUrl: string
         webhookSecret: string
         maskedApiKey: string
-      }>('/admin/accounts', {
+      }>('/settings/accounts', {
         method: 'POST',
         body: JSON.stringify(payload),
       }),
@@ -119,12 +131,13 @@ export function useUpdateAccount() {
       id: string
       name?: string
       fromName?: string
+      fromEmail?: string | null   // null = revert to default noreply@
       resendApiKey?: string
       aiSystemPrompt?: string
       autoReplyEnabled?: boolean
       aiModel?: string
     }) =>
-      apiFetch(`/admin/accounts/${id}`, {
+      apiFetch(`/settings/accounts/${id}`, {
         method: 'PUT',
         body: JSON.stringify(payload),
       }),
@@ -138,7 +151,7 @@ export function useDeleteAccount() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) =>
-      apiFetch(`/admin/accounts/${id}`, {
+      apiFetch(`/settings/accounts/${id}`, {
         method: 'DELETE',
       }),
     onSuccess: () => {
@@ -147,7 +160,75 @@ export function useDeleteAccount() {
   })
 }
 
-// ── Emails ────────────────────────────────────────────────────
+// ── Account Senders ───────────────────────────────────────────
+
+export function useAccountSenders(accountId: string | null) {
+  return useQuery({
+    queryKey: ['senders', accountId],
+    queryFn: () => apiFetch<AccountSender[]>(`/settings/accounts/${accountId}/senders`),
+    enabled: !!accountId,
+    staleTime: 30_000,
+  })
+}
+
+export function useCreateSender(accountId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: { name: string; email: string; isDefault?: boolean }) =>
+      apiFetch<AccountSender>(`/settings/accounts/${accountId}/senders`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['senders', accountId] })
+    },
+  })
+}
+
+export function useDeleteSender(accountId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (senderId: string) =>
+      apiFetch(`/settings/accounts/${accountId}/senders/${senderId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['senders', accountId] })
+    },
+  })
+}
+
+export function useSetDefaultSender(accountId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (senderId: string) =>
+      apiFetch(`/settings/accounts/${accountId}/senders/${senderId}/default`, { method: 'PATCH' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['senders', accountId] })
+    },
+  })
+}
+
+// ── All senders across all accounts (for Composer From dropdown) ──
+
+export function useAllSenders(accounts: Account[] | undefined) {
+  // Fetch senders for each account, combine into a flat list
+  return useQuery({
+    queryKey: ['all-senders', accounts?.map((a) => a.id)],
+    queryFn: async () => {
+      if (!accounts || accounts.length === 0) return []
+      const results = await Promise.all(
+        accounts.map((acc) =>
+          apiFetch<AccountSender[]>(`/settings/accounts/${acc.id}/senders`).then((senders) =>
+            senders.map((s) => ({ ...s, _accountDomain: acc.domain, _accountAiModel: acc.ai_model }))
+          )
+        )
+      )
+      return results.flat()
+    },
+    enabled: !!accounts && accounts.length > 0,
+    staleTime: 30_000,
+  })
+}
+
 
 export function useEmails(
   accountId: string | null,
@@ -233,9 +314,14 @@ export function useSendEmail() {
       to: string[]
       cc?: string[]
       subject: string
-      html: string
+      html?: string
       text?: string
       replyToEmailId?: string
+      templateId?: string
+      templateVariables?: Record<string, string | number>
+      attachmentKeys?: string[]
+      senderName?: string    // selected sender identity name
+      senderEmail?: string   // selected sender identity email
     }) => apiFetch('/send', { method: 'POST', body: JSON.stringify(payload) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['emails'] })
@@ -244,6 +330,48 @@ export function useSendEmail() {
 }
 
 // ── AI ────────────────────────────────────────────────────────
+
+export interface ResendTemplate {
+  id: string
+  name: string
+  alias: string | null
+  status: 'draft' | 'published'
+  created_at: string
+}
+
+export interface ResendTemplateDetail extends ResendTemplate {
+  subject: string | null
+  html: string | null
+  variables?: Array<{ key: string; type: string; fallbackValue?: string | number }>
+}
+
+export function useResendTemplates(accountId: string | null) {
+  return useQuery({
+    queryKey: ['resend-templates', accountId],
+    queryFn: () => apiFetch<ResendTemplate[]>(`/templates/resend?accountId=${accountId}`),
+    enabled: !!accountId,
+    staleTime: 60_000,
+  })
+}
+
+export function useResendTemplate(accountId: string | null, templateId: string | null) {
+  return useQuery({
+    queryKey: ['resend-template', accountId, templateId],
+    queryFn: () => apiFetch<ResendTemplateDetail>(`/templates/resend/${templateId}?accountId=${accountId}`),
+    enabled: !!accountId && !!templateId,
+    staleTime: 60_000,
+  })
+}
+
+export function useQuickReplySuggestions() {
+  return useMutation({
+    mutationFn: ({ emailId, accountId }: { emailId: string; accountId: string }) =>
+      apiFetch<{ suggestions: string[] }>('/ai/quick-reply-suggestions', {
+        method: 'POST',
+        body: JSON.stringify({ emailId, accountId }),
+      }),
+  })
+}
 
 export function useAIDraftReply(emailId: string | null) {
   return useQuery({
@@ -263,7 +391,7 @@ export function useAISummarize() {
 
 export function useAIAdjustTone() {
   return useMutation({
-    mutationFn: (payload: { text: string; tone: 'formal' | 'casual' | 'concise' }) =>
+    mutationFn: (payload: { text: string; tone: 'formal' | 'casual' | 'concise'; accountId?: string }) =>
       apiFetch<{ result: string }>('/ai/adjust-tone', {
         method: 'POST',
         body: JSON.stringify(payload),

@@ -7,7 +7,7 @@ import { ShortcutsOverlay, useKeyboardShortcuts } from './components/Shortcuts'
 import { useAppStore } from './store'
 import { useAuth } from './queries'
 import LoginPage from './pages/Login'
-import AdminPanel from './components/AdminPanel'
+import SettingsPanel from './components/SettingsPanel'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -48,13 +48,13 @@ function AppShell() {
     return <LoginPage />
   }
 
-  const isAdminView = window.location.pathname === '/admin'
+  const isSettingsView = window.location.pathname === '/settings'
 
   return (
     <>
       <div className="app-shell">
         <Sidebar />
-        {isAdminView ? <AdminPanel /> : (
+        {isSettingsView ? <SettingsPanel /> : (
           <>
             <EmailList />
             <ReadingPane />

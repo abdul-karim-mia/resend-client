@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     name                TEXT NOT NULL,
     domain              TEXT NOT NULL,
     from_name           TEXT NOT NULL DEFAULT 'Inbox',
+    from_email          TEXT,                              -- custom sender e.g. support@domain.com; NULL = noreply@domain
     resend_api_key_enc  TEXT NOT NULL,
     webhook_secret      TEXT NOT NULL,
     ai_system_prompt    TEXT NOT NULL DEFAULT 'You are a helpful customer support agent. Be concise, polite, and professional.',
@@ -105,3 +106,15 @@ CREATE TABLE IF NOT EXISTS contacts (
     last_contacted  DATETIME,
     UNIQUE(account_id, email)
 );
+
+-- Account Senders (Sender Identities)
+CREATE TABLE IF NOT EXISTS account_senders (
+    id              TEXT PRIMARY KEY,
+    account_id      TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    name            TEXT NOT NULL,
+    email           TEXT NOT NULL,
+    is_default      INTEGER NOT NULL DEFAULT 0,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_account_senders_account ON account_senders(account_id);

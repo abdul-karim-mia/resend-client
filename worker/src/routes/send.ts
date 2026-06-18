@@ -15,14 +15,17 @@ sendRoutes.post('/', async (c) => {
     cc?: string[]
     bcc?: string[]
     subject: string
-    html: string
+    html?: string
     text?: string
     replyToEmailId?: string
     templateId?: string
-    attachmentKeys?: string[] // R2 keys
+    templateVariables?: Record<string, string | number>
+    attachmentKeys?: string[]
+    senderName?: string    // selected sender identity name
+    senderEmail?: string   // selected sender identity email
   }>()
 
-  const { accountId, to, cc, bcc, subject, html, text, replyToEmailId, attachmentKeys } = body
+  const { accountId, to, cc, bcc, subject, html, text, replyToEmailId, attachmentKeys, templateId, templateVariables, senderName, senderEmail } = body
 
   // Load account
   const account = await c.env.DB.prepare(`SELECT * FROM accounts WHERE id = ?`)
@@ -32,6 +35,14 @@ sendRoutes.post('/', async (c) => {
 
   const apiKey = await decryptApiKey(account.resend_api_key_enc, c.env.MASTER_ENCRYPTION_KEY)
   const resend = new Resend(apiKey)
+
+  // Resolve the actual from address:
+  // 1. Use explicit sender from payload (user picked from dropdown)
+  // 2. Fall back to account's from_email field
+  // 3. Fall back to noreply@domain
+  const fromAddress = senderEmail ?? account.from_email ?? `noreply@${account.domain}`
+  const fromName = senderName ?? account.from_name
+  const fromHeader = `${fromName} <${fromAddress}>`
 
   // Threading headers
   let inReplyTo: string | undefined
@@ -77,21 +88,36 @@ sendRoutes.post('/', async (c) => {
     }
   }
 
-  // Send via Resend — use conditional spread for optional fields (exactOptionalPropertyTypes safe)
-  const { data, error } = await resend.emails.send({
-    from: `${account.from_name} <noreply@${account.domain}>`,
-    to,
-    ...(cc ? { cc } : {}),
-    ...(bcc ? { bcc } : {}),
-    subject,
-    html,
-    ...(text ? { text } : {}),
-    headers: {
-      ...(inReplyTo ? { 'In-Reply-To': inReplyTo } : {}),
-      ...(references ? { References: references } : {}),
-    },
-    ...(attachments.length > 0 ? { attachments } : {}),
-  })
+  // Send via Resend — template mode or inline HTML mode
+  const sendPayload = templateId
+    ? {
+        from: fromHeader,
+        to,
+        ...(cc ? { cc } : {}),
+        ...(bcc ? { bcc } : {}),
+        subject,
+        template: { id: templateId, variables: templateVariables ?? {} },
+        headers: {
+          ...(inReplyTo ? { 'In-Reply-To': inReplyTo } : {}),
+          ...(references ? { References: references } : {}),
+        },
+      }
+    : {
+        from: fromHeader,
+        to,
+        ...(cc ? { cc } : {}),
+        ...(bcc ? { bcc } : {}),
+        subject,
+        html: html ?? '',
+        ...(text ? { text } : {}),
+        headers: {
+          ...(inReplyTo ? { 'In-Reply-To': inReplyTo } : {}),
+          ...(references ? { References: references } : {}),
+        },
+        ...(attachments.length > 0 ? { attachments } : {}),
+      }
+
+  const { data, error } = await resend.emails.send(sendPayload as Parameters<typeof resend.emails.send>[0])
 
   if (error) {
     console.error('[send] Resend error:', error)
@@ -112,11 +138,11 @@ sendRoutes.post('/', async (c) => {
   `).bind(
     emailId, accountId, threadId, null,
     inReplyTo ?? null,
-    account.from_name, `noreply@${account.domain}`,
+    fromName, fromAddress,
     JSON.stringify(to),
     cc ? JSON.stringify(cc) : null,
     bcc ? JSON.stringify(bcc) : null,
-    subject, html, text ?? null,
+    subject, html ?? null, text ?? null,
     data?.id ?? null
   ).run()
 

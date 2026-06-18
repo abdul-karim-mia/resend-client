@@ -12,7 +12,9 @@ import { sendRoutes } from './routes/send'
 import { aiRoutes } from './routes/ai'
 import { attachmentRoutes } from './routes/attachments'
 import { templateRoutes } from './routes/templates'
-import { adminRoutes } from './routes/admin'
+import { resendTemplateRoutes } from './routes/resend-templates'
+import { settingsRoutes } from './routes/settings'
+import { senderRoutes } from './routes/senders'
 import { ensureDbInitialized } from './db'
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -67,7 +69,9 @@ app.route('/api/send', sendRoutes)
 app.route('/api/ai', aiRoutes)
 app.route('/api/attachments', attachmentRoutes)
 app.route('/api/templates', templateRoutes)
-app.route('/api/admin', adminRoutes)
+app.route('/api/templates/resend', resendTemplateRoutes)
+app.route('/api/settings', settingsRoutes)
+app.route('/api/settings/accounts/:id/senders', senderRoutes)
 
 // Global error handler
 app.onError((err, c) => {

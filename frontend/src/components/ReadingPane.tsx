@@ -1,6 +1,7 @@
 import { useAppStore } from '../store'
 import { useEmail, useMoveFolder, useMarkRead } from '../queries'
 import SafeEmailViewer from './SafeEmailViewer'
+import QuickReply from './QuickReply'
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleString([], {
@@ -20,6 +21,7 @@ export default function ReadingPane() {
   const emailId = useAppStore((s) => s.selectedEmailId)
   const openComposer = useAppStore((s) => s.openComposer)
   const addToast = useAppStore((s) => s.addToast)
+  const selectedAccountId = useAppStore((s) => s.selectedAccountId)
   const moveFolder = useMoveFolder()
   const markRead = useMarkRead()
 
@@ -93,78 +95,94 @@ export default function ReadingPane() {
     <div className="reading-pane">
       {/* Action bar */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        padding: '10px 20px',
+        display: 'flex', alignItems: 'center', gap: 4,
+        padding: '8px 16px',
         borderBottom: '1px solid var(--border)',
         background: 'var(--bg-surface)',
         flexWrap: 'wrap',
       }}>
-        <button id="action-reply" className="btn btn-ghost" style={{ fontSize: 13 }} onClick={() => openComposer(email.id)}>
-          ↩ Reply
+        <button id="action-reply" className="btn btn-ghost" style={{ fontSize: 12, gap: 6 }} onClick={() => openComposer(email.id)}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+          Reply
         </button>
-        <button id="action-forward" className="btn btn-ghost" style={{ fontSize: 13 }} onClick={() => openComposer()}>
-          ↪ Forward
+        <button id="action-forward" className="btn btn-ghost" style={{ fontSize: 12, gap: 6 }} onClick={() => openComposer()}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>
+          Forward
         </button>
-        <button id="action-archive" className="btn btn-ghost" style={{ fontSize: 13 }} onClick={handleArchive}>
-          📦 Archive
+        <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 4px' }} />
+        <button id="action-archive" className="btn btn-ghost" style={{ fontSize: 12, gap: 6 }} onClick={handleArchive}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+          Archive
         </button>
-        <button id="action-trash" className="btn btn-ghost" style={{ fontSize: 13 }} onClick={handleTrash}>
-          🗑 Trash
+        <button id="action-trash" className="btn btn-ghost" style={{ fontSize: 12, gap: 6, color: 'var(--text-muted)' }} onClick={handleTrash}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          Trash
         </button>
         <button
           id="action-read-toggle"
           className="btn btn-ghost"
-          style={{ fontSize: 13, marginLeft: 'auto' }}
+          style={{ fontSize: 12, gap: 6, marginLeft: 'auto' }}
           onClick={() => markRead.mutate({ emailId: email.id, read: email.read_status === 0 })}
         >
-          {email.read_status === 1 ? '○ Mark unread' : '● Mark read'}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill={email.read_status === 1 ? 'none' : 'currentColor'} stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="6"/></svg>
+          {email.read_status === 1 ? 'Mark unread' : 'Mark read'}
         </button>
       </div>
 
       {/* Email header */}
-      <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
-        <h1 style={{ fontSize: 20, marginBottom: 14 }}>{email.subject ?? '(no subject)'}</h1>
+      <div style={{ padding: '20px 24px 18px', borderBottom: '1px solid var(--border)' }}>
+        <h1 style={{ fontSize: 19, fontWeight: 700, marginBottom: 14, letterSpacing: '-0.02em', lineHeight: 1.3 }}>
+          {email.subject ?? '(no subject)'}
+        </h1>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
           {/* Avatar */}
           <div style={{
-            width: 38, height: 38, borderRadius: '50%',
-            background: `hsl(${(email.sender_email?.charCodeAt(0) ?? 0) * 17 % 360}deg 50% 40%)`,
+            width: 40, height: 40, borderRadius: '50%',
+            background: `hsl(${(email.sender_email?.charCodeAt(0) ?? 0) * 17 % 360}deg 55% 38%)`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 15, fontWeight: 700, color: '#fff', flexShrink: 0,
+            fontSize: 16, fontWeight: 700, color: '#fff', flexShrink: 0,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
           }}>
             {(email.sender_name || email.sender_email).slice(0, 1).toUpperCase()}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <strong style={{ fontSize: 14 }}>
-                {email.sender_name || email.sender_email}
-              </strong>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)', flexShrink: 0, marginLeft: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+              <div style={{ minWidth: 0 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {email.sender_name || email.sender_email}
+                </span>
+                {email.sender_name && (
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 6 }}>
+                    &lt;{email.sender_email}&gt;
+                  </span>
+                )}
+              </div>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0, whiteSpace: 'nowrap' }}>
                 {formatDate(email.created_at)}
               </span>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-              {email.sender_email !== (email.sender_name || email.sender_email) && (
-                <span>{email.sender_email} → </span>
-              )}
-              {recipients}
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{recipients}</span>
             </div>
           </div>
         </div>
       </div>
 
       {/* Email body */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0 4px' }}>
+      <div style={{ flex: 1, overflowY: 'auto' }}>
         {email.body_html ? (
           <SafeEmailViewer html={email.body_html} />
         ) : (
-          <pre style={{
-            padding: 24, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-            fontSize: 14, lineHeight: 1.7, color: 'var(--text-primary)',
-            fontFamily: 'inherit',
-          }}>
-            {email.body_text ?? '(no content)'}
-          </pre>
+          <div style={{ padding: '24px 32px' }}>
+            <pre style={{
+              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              fontSize: 14, lineHeight: 1.8, color: 'var(--text-secondary)',
+              fontFamily: 'inherit', margin: 0,
+            }}>
+              {email.body_text ?? '(no content)'}
+            </pre>
+          </div>
         )}
       </div>
 
@@ -198,6 +216,20 @@ export default function ReadingPane() {
             </button>
           ))}
         </div>
+      )}
+
+      {/* Quick Reply — AI-generated suggestions */}
+      {email.direction !== 'outbound' && selectedAccountId && (
+        <QuickReply
+          email={{
+            id: email.id,
+            subject: email.subject ?? null,
+            sender_email: email.sender_email,
+            account_id: email.account_id,
+            thread_id: email.thread_id,
+          }}
+          accountId={selectedAccountId}
+        />
       )}
     </div>
   )

@@ -110,7 +110,18 @@ export async function ensureDbInitialized(db: D1Database) {
             email           TEXT NOT NULL,
             last_contacted  DATETIME,
             UNIQUE(account_id, email)
-        )`
+        )`,
+
+        // 9. Account Senders Table
+        `CREATE TABLE IF NOT EXISTS account_senders (
+            id              TEXT PRIMARY KEY,
+            account_id      TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            name            TEXT NOT NULL,
+            email           TEXT NOT NULL,
+            is_default      INTEGER NOT NULL DEFAULT 0,
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_account_senders_account ON account_senders(account_id)`
       ]
 
       for (const statement of statements) {

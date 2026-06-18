@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useAppStore } from '../store'
 import { useAccounts, useLogout } from '../queries'
 
@@ -18,15 +19,27 @@ export default function Sidebar() {
   const openComposer = useAppStore((s) => s.openComposer)
   const logout = useLogout()
 
-  // Auto-select first account
-  if (accounts && accounts.length > 0 && !selectedAccountId) {
-    setAccount(accounts[0].id)
-  }
+  const isSettingsView = window.location.pathname === '/settings'
+
+  // Auto-select first account on load
+  useEffect(() => {
+    if (accounts && accounts.length > 0 && !selectedAccountId) {
+      setAccount(accounts[0].id)
+    }
+  }, [accounts, selectedAccountId, setAccount])
 
   return (
     <nav className="sidebar" aria-label="Main navigation">
       {/* Logo */}
-      <div style={{ padding: '4px 8px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <a href="/" style={{
+        padding: '4px 8px 12px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        textDecoration: 'none',
+        color: 'inherit',
+        cursor: 'pointer'
+      }}>
         <div style={{
           width: 28, height: 28, borderRadius: 8,
           background: 'linear-gradient(135deg, #6366f1, #818cf8)',
@@ -36,7 +49,7 @@ export default function Sidebar() {
           <span style={{ fontSize: 14 }}>✉</span>
         </div>
         <span style={{ fontWeight: 600, fontSize: 14, letterSpacing: '-0.01em' }}>resend-client</span>
-      </div>
+      </a>
 
       {/* Compose button */}
       <button
@@ -97,35 +110,42 @@ export default function Sidebar() {
           <p style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 8 }}>
             No accounts configured yet. Add your first Resend account to start receiving emails.
           </p>
-          <a href="/admin" className="btn btn-primary" style={{ fontSize: 11, padding: '5px 10px', display: 'inline-flex' }}>
-            Go to Admin →
+          <a href="/settings" className="btn btn-primary" style={{ fontSize: 11, padding: '5px 10px', display: 'inline-flex' }}>
+            Go to Settings →
           </a>
         </div>
       )}
 
-      <div className="divider" />
-
       {/* Folder navigation */}
-      <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', padding: '0 10px 4px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-        Folders
-      </p>
-      {FOLDERS.map((folder) => (
-        <button
-          key={folder.id}
-          id={`folder-${folder.id}`}
-          className={`nav-item ${selectedFolder === folder.id ? 'active' : ''}`}
-          onClick={() => setFolder(folder.id as typeof selectedFolder)}
-        >
-          <span>{folder.icon}</span>
-          {folder.label}
-        </button>
-      ))}
+      {!isSettingsView && (
+        <>
+          <div className="divider" />
+          <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', padding: '0 10px 4px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            Folders
+          </p>
+          {FOLDERS.map((folder) => (
+            <button
+              key={folder.id}
+              id={`folder-${folder.id}`}
+              className={`nav-item ${selectedFolder === folder.id ? 'active' : ''}`}
+              onClick={() => setFolder(folder.id as typeof selectedFolder)}
+            >
+              <span>{folder.icon}</span>
+              {folder.label}
+            </button>
+          ))}
+        </>
+      )}
 
       {/* Bottom actions */}
       <div style={{ marginTop: 'auto' }}>
         <div className="divider" />
-        <a href="/admin" className="nav-item" id="nav-admin">
-          <span>⚙️</span> Admin
+        <a
+          href="/settings"
+          className={`nav-item ${isSettingsView ? 'active' : ''}`}
+          id="nav-settings"
+        >
+          <span>⚙️</span> Settings
         </a>
         <button
           className="nav-item"

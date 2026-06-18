@@ -38,18 +38,26 @@ export default function EmailList() {
     <div className="email-list" id="email-list">
       {/* Header */}
       <div style={{
-        padding: '14px 16px 10px',
+        padding: '12px 16px 10px',
         borderBottom: '1px solid var(--border)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
+        background: 'var(--bg-elevated)',
       }}>
-        <h2 style={{ fontSize: 15, fontWeight: 600, textTransform: 'capitalize', margin: 0 }}>
+        <h2 style={{ fontSize: 14, fontWeight: 700, textTransform: 'capitalize', margin: 0, letterSpacing: '-0.01em' }}>
           {folder}
         </h2>
-        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          {emails ? `${emails.length} emails` : ''}
-        </span>
+        {emails && emails.length > 0 && (
+          <span style={{
+            fontSize: 11, fontWeight: 600,
+            padding: '2px 7px', borderRadius: 'var(--radius-full)',
+            background: 'var(--accent-subtle)', color: 'var(--accent-light)',
+            border: '1px solid var(--border-accent)',
+          }}>
+            {emails.length}
+          </span>
+        )}
       </div>
 
       {/* Email items */}
@@ -70,22 +78,32 @@ export default function EmailList() {
 
         {!isLoading && emails && emails.length === 0 && (
           <div style={{
-            padding: 40,
+            padding: '48px 24px',
             textAlign: 'center',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: 8,
+            gap: 10,
           }}>
-            <span style={{ fontSize: 40, opacity: 0.4 }}>
-              {folder === 'inbox' ? '📥' : folder === 'sent' ? '📤' : folder === 'trash' ? '🗑️' : '📦'}
-            </span>
-            <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-muted)' }}>
-              {folder === 'inbox' ? 'Your inbox is empty' : `No ${folder} emails`}
+            <div style={{ opacity: 0.25 }}>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
+                {folder === 'trash' ? (
+                  <><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></>
+                ) : folder === 'sent' ? (
+                  <><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9l20-7z"/></>
+                ) : folder === 'drafts' ? (
+                  <><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></>
+                ) : (
+                  <><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></>
+                )}
+              </svg>
+            </div>
+            <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-muted)' }}>
+              {folder === 'inbox' ? 'Inbox is empty' : `No ${folder} emails`}
             </p>
             {folder === 'inbox' && (
-              <p style={{ fontSize: 12, color: 'var(--text-disabled)' }}>
-                New emails will appear here when received via Resend
+              <p style={{ fontSize: 11, color: 'var(--text-disabled)', lineHeight: 1.5 }}>
+                New emails will appear here
               </p>
             )}
           </div>
