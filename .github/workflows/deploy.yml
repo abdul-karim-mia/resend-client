@@ -58,7 +58,7 @@ jobs:
 
       # ── 7. Build React frontend into frontend/dist/ ──────────────────────────
       - name: Build frontend
-        run: pnpm --filter frontend build
+        run: pnpm --filter frontend run build
 
       # ── 7. Push all Worker secrets to Cloudflare ────────────────────────────
       # Required GitHub repository secrets (Settings → Secrets & variables → Actions):
