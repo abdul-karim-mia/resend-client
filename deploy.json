@@ -1,5 +1,4 @@
 {
-  "$schema": "https://deploy.workers.cloudflare.com/schema.json",
   "name": "resend-client",
   "description": "Self-hosted multi-tenant email client built on Cloudflare Workers, D1, R2, and Workers AI.",
   "repository": "https://github.com/abdul-karim-mia/resend-client",
@@ -66,5 +65,5 @@
       "description": "SHA-256 hex hash of your admin password. Generate with: node scripts/setup-secrets.mjs — then copy the ADMIN_PASSWORD_HASH value.",
       "required": true
     }
-  ],
+  ]
 }
