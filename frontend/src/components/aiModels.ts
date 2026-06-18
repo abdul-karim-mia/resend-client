@@ -4,18 +4,11 @@
 export const AI_MODELS = [
   // ── Fast (great for auto-reply, low latency) ─────────────────────────────
   {
-    id: '@cf/meta/llama-3.1-8b-instruct',
-    name: 'Llama 3.1 8B',
-    badge: 'Default',
-    category: 'Fast',
-    description: 'Best balance of speed and quality. Ideal for drafts & auto-reply.',
-  },
-  {
     id: '@cf/meta/llama-3.2-3b-instruct',
     name: 'Llama 3.2 3B',
-    badge: 'Fastest',
+    badge: 'Default',
     category: 'Fast',
-    description: 'Smallest model, lowest latency. Good for simple one-liners.',
+    description: 'Smallest model, lowest latency. Ideal for drafts & auto-reply.',
   },
   {
     id: '@cf/mistral/mistral-7b-instruct-v0.2',
@@ -33,13 +26,6 @@ export const AI_MODELS = [
   },
 
   // ── Balanced (quality + reasonable speed) ────────────────────────────────
-  {
-    id: '@cf/meta/llama-3.1-70b-instruct',
-    name: 'Llama 3.1 70B',
-    badge: 'Popular',
-    category: 'Balanced',
-    description: 'High-quality 70B model. Better writing, slower than 8B.',
-  },
   {
     id: '@cf/google/gemma-3-12b-it',
     name: 'Gemma 3 12B',

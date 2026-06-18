@@ -225,7 +225,7 @@ async function triggerAutoReply(
   bodyText: string
 ): Promise<void> {
   try {
-    const aiResponse = await (env.AI as Ai).run(account.ai_model || '@cf/meta/llama-3.1-8b-instruct', {
+    const aiResponse = await (env.AI as Ai).run(account.ai_model || '@cf/meta/llama-3.2-3b-instruct', {
       messages: [
         { role: 'system', content: account.ai_system_prompt },
         {

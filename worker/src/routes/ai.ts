@@ -60,7 +60,7 @@ aiRoutes.post('/summarize/:threadId', async (c) => {
   if (results.length === 0) return c.json({ success: false, error: 'Thread not found' }, 404)
 
   const combined = results.map((r) => r.body_text).join('\n---\n').slice(0, 4000)
-  const model = results[0]?.ai_model ?? '@cf/meta/llama-3.1-8b-instruct'
+  const model = results[0]?.ai_model ?? '@cf/meta/llama-3.2-3b-instruct'
 
   const result = await (c.env.AI as Ai).run(model, {
     messages: [
@@ -163,7 +163,7 @@ aiRoutes.post('/adjust-tone', async (c) => {
     return c.json({ success: false, error: 'text and tone are required' }, 400)
   }
 
-  let model = '@cf/meta/llama-3.1-8b-instruct'
+  let model = '@cf/meta/llama-3.2-3b-instruct'
   if (accountId) {
     const acc = await c.env.DB.prepare(`SELECT ai_model FROM accounts WHERE id = ?`).bind(accountId).first<{ ai_model: string }>()
     if (acc) model = acc.ai_model

@@ -40,7 +40,7 @@ export default function SettingsPanel() {
   const [resendApiKey, setResendApiKey] = useState('')
   const [aiSystemPrompt, setAiSystemPrompt] = useState('')
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false)
-  const [aiModel, setAiModel] = useState('@cf/meta/llama-3.1-8b-instruct')
+  const [aiModel, setAiModel] = useState('@cf/meta/llama-3.2-3b-instruct')
 
   const [showApiKey, setShowApiKey] = useState(false)
 
@@ -65,7 +65,7 @@ export default function SettingsPanel() {
       setResendApiKey('') // Don't prefill password fields
       setAiSystemPrompt(selectedAcc.ai_system_prompt)
       setAutoReplyEnabled(selectedAcc.auto_reply_enabled === 1)
-      setAiModel(selectedAcc.ai_model || '@cf/meta/llama-3.1-8b-instruct')
+      setAiModel(selectedAcc.ai_model || '@cf/meta/llama-3.2-3b-instruct')
     } else {
       resetForm()
     }
@@ -97,7 +97,7 @@ export default function SettingsPanel() {
     setResendApiKey('')
     setAiSystemPrompt('You are a helpful customer support agent. Be concise, polite, and professional.')
     setAutoReplyEnabled(false)
-    setAiModel('@cf/meta/llama-3.1-8b-instruct')
+    setAiModel('@cf/meta/llama-3.2-3b-instruct')
     setLocalSenders([])
     setHasEditedSenders(false)
   }

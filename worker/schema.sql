@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     webhook_secret      TEXT NOT NULL,
     ai_system_prompt    TEXT NOT NULL DEFAULT 'You are a helpful customer support agent. Be concise, polite, and professional.',
     auto_reply_enabled  INTEGER NOT NULL DEFAULT 0,
-    ai_model            TEXT NOT NULL DEFAULT '@cf/meta/llama-3.1-8b-instruct',
+    ai_model            TEXT NOT NULL DEFAULT '@cf/meta/llama-3.2-3b-instruct',
     created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP
 );

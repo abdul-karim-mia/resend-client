@@ -68,7 +68,7 @@ settingsRoutes.post('/accounts', async (c) => {
     encryptedKey, webhookSecret,
     body.aiSystemPrompt ?? 'You are a helpful customer support agent. Be concise, polite, and professional.',
     body.autoReplyEnabled ? 1 : 0,
-    body.aiModel ?? '@cf/meta/llama-3.1-8b-instruct'
+    body.aiModel ?? '@cf/meta/llama-3.2-3b-instruct'
   ).run()
 
   // Insert senders into account_senders
