@@ -80,8 +80,15 @@ app.onError((err, c) => {
 })
 
 // Catch-all: serve React SPA static assets
+// If the asset is not found (e.g. /login, /dashboard), fall back to index.html
+// so that React Router handles the route client-side.
 app.get('*', async (c) => {
-  return c.env.ASSETS.fetch(c.req.raw)
+  const res = await c.env.ASSETS.fetch(c.req.raw)
+  if (res.status === 404) {
+    const indexUrl = new URL('/', c.req.url)
+    return c.env.ASSETS.fetch(new Request(indexUrl.toString(), c.req.raw))
+  }
+  return res
 })
 
 export default app
