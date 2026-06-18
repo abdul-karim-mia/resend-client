@@ -67,7 +67,4 @@
       "required": true
     }
   ],
-  "vars": {
-    "ENVIRONMENT": "production"
-  }
 }
