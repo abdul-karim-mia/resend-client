@@ -78,18 +78,16 @@ webhookRoutes.post('/:accountId/inbound', async (c) => {
   return c.json({ success: true })
 })
 
-// POST /webhook/:accountId/events — Delivery status updates
+// POST /webhook/:accountId/events — Delivery status updates from Resend
 webhookRoutes.post('/:accountId/events', async (c) => {
   const accountId = c.req.param('accountId')
 
-  // Load account (for webhook secret)
   const account = await c.env.DB.prepare(
     `SELECT webhook_secret FROM accounts WHERE id = ?`
   ).bind(accountId).first<{ webhook_secret: string }>()
 
   if (!account) return c.json({ error: 'Account not found' }, 404)
 
-  // Verify webhook signature (same as inbound handler)
   const signature = c.req.header('svix-signature') ?? c.req.header('resend-signature') ?? ''
   const rawBody = await c.req.text()
 
@@ -101,12 +99,12 @@ webhookRoutes.post('/:accountId/events', async (c) => {
   const payload = JSON.parse(rawBody) as { type: string; data: { email_id: string } }
 
   const statusMap: Record<string, string> = {
-    'email.sent': 'sent',
-    'email.delivered': 'delivered',
+    'email.sent':             'sent',
+    'email.delivered':        'delivered',
     'email.delivery_delayed': 'pending',
-    'email.bounced': 'bounced',
-    'email.opened': 'opened',
-    'email.clicked': 'opened',
+    'email.bounced':          'bounced',
+    'email.opened':           'opened',
+    'email.clicked':          'opened',
   }
 
   const newStatus = statusMap[payload.type]
@@ -119,7 +117,7 @@ webhookRoutes.post('/:accountId/events', async (c) => {
   return c.json({ success: true })
 })
 
-// --- Helpers ---
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function verifySignature(body: string, signature: string, secret: string): Promise<boolean> {
   if (!signature) return false
@@ -131,12 +129,10 @@ async function verifySignature(body: string, signature: string, secret: string):
       false,
       ['verify', 'sign']
     )
-    // Compute expected signature
     const expected = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body))
     const expectedHex = Array.from(new Uint8Array(expected))
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('')
-    // Extract hex from signature (format: "v1,hex_signature" or just hex)
     const sigHex = signature.includes(',') ? signature.split(',')[1] ?? '' : signature
     return timingSafeEqual(expectedHex, sigHex)
   } catch {
@@ -189,7 +185,6 @@ async function processAttachments(
       const filename = sanitizeFilename(att.filename ?? 'attachment')
       const r2Key = `attachments/${accountId}/${emailId}/${nanoid()}_${filename}`
 
-      // If attachment_id exists, fetch from Resend API
       if (att.attachment_id) {
         const apiKey = await decryptApiKey(account.resend_api_key_enc, env.MASTER_ENCRYPTION_KEY)
         const response = await fetch(
@@ -212,11 +207,18 @@ async function processAttachments(
 }
 
 function sanitizeFilename(filename: string): string {
-  // From file-uploads skill: never use user filename directly
   const base = filename.split('/').pop() ?? 'file'
   return base.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200)
 }
 
+/**
+ * Trigger an AI-generated auto-reply for inbound emails when auto_reply_enabled = 1.
+ *
+ * Sender resolution priority:
+ * 1. Default sender from account_senders table (most specific)
+ * 2. account.from_email (configured custom address)
+ * 3. noreply@domain (last resort)
+ */
 async function triggerAutoReply(
   env: Bindings,
   account: Account,
@@ -225,31 +227,45 @@ async function triggerAutoReply(
   bodyText: string
 ): Promise<void> {
   try {
-    const aiResponse = await (env.AI as Ai).run(account.ai_model || '@cf/meta/llama-3.2-3b-instruct', {
-      messages: [
-        { role: 'system', content: account.ai_system_prompt },
-        {
-          role: 'user',
-          content: `Reply to this email:\nFrom: ${emailData['from']}\nSubject: ${emailData['subject']}\n\n${bodyText.slice(0, 2000)}`,
-        },
-      ],
-      max_tokens: 500,
-    } as Parameters<Ai['run']>[1])
+    // Resolve the best "from" address — prefer the designated default sender
+    const defaultSender = await env.DB.prepare(
+      `SELECT name, email FROM account_senders WHERE account_id = ? AND is_default = 1 LIMIT 1`
+    ).bind(account.id).first<{ name: string; email: string }>()
 
-    const draft = (aiResponse as { response?: string }).response
+    const fromName  = defaultSender?.name  ?? account.from_name
+    const fromEmail = defaultSender?.email ?? account.from_email ?? `noreply@${account.domain}`
+    const fromHeader = `${fromName} <${fromEmail}>`
+
+    const aiResponse = await (env.AI as Ai).run(
+      account.ai_model || '@cf/meta/llama-3.2-3b-instruct',
+      {
+        messages: [
+          { role: 'system', content: account.ai_system_prompt },
+          {
+            role: 'user',
+            content: `Write a professional reply to this email. Return only the reply body — no subject line, no "Re:" prefix.\n\nFrom: ${emailData['from']}\nSubject: ${emailData['subject']}\n\n${bodyText.slice(0, 2000)}`,
+          },
+        ],
+        max_tokens: 500,
+      } as Parameters<Ai['run']>[1]
+    )
+
+    // Strip DeepSeek R1 reasoning tags
+    const raw = (aiResponse as { response?: string }).response ?? ''
+    const draft = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
     if (!draft) return
 
     const apiKey = await decryptApiKey(account.resend_api_key_enc, env.MASTER_ENCRYPTION_KEY)
     const resend = new Resend(apiKey)
 
     await resend.emails.send({
-      from: `${account.from_name} <noreply@${account.domain}>`,
+      from: fromHeader,
       to: [extractEmail(String(emailData['from'] ?? ''))],
       subject: `Re: ${String(emailData['subject'] ?? '')}`,
       text: draft,
       headers: {
         'In-Reply-To': String(emailData['message_id'] ?? ''),
-        References: String(emailData['message_id'] ?? ''),
+        References:    String(emailData['message_id'] ?? ''),
       },
     })
   } catch (err) {

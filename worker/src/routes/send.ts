@@ -25,7 +25,15 @@ sendRoutes.post('/', async (c) => {
     senderEmail?: string   // selected sender identity email
   }>()
 
-  const { accountId, to, cc, bcc, subject, html, text, replyToEmailId, attachmentKeys, templateId, templateVariables, senderName, senderEmail } = body
+  const {
+    accountId, to, cc, bcc, subject, html, text,
+    replyToEmailId, attachmentKeys, templateId, templateVariables,
+    senderName, senderEmail,
+  } = body
+
+  if (!accountId || !to?.length || !subject) {
+    return c.json({ success: false, error: 'accountId, to, and subject are required' }, 400)
+  }
 
   // Load account
   const account = await c.env.DB.prepare(`SELECT * FROM accounts WHERE id = ?`)
@@ -36,15 +44,15 @@ sendRoutes.post('/', async (c) => {
   const apiKey = await decryptApiKey(account.resend_api_key_enc, c.env.MASTER_ENCRYPTION_KEY)
   const resend = new Resend(apiKey)
 
-  // Resolve the actual from address:
-  // 1. Use explicit sender from payload (user picked from dropdown)
-  // 2. Fall back to account's from_email field
+  // Resolve the From address:
+  // 1. Explicit sender from payload (user picked from dropdown)
+  // 2. Account's from_email field
   // 3. Fall back to noreply@domain
   const fromAddress = senderEmail ?? account.from_email ?? `noreply@${account.domain}`
   const fromName = senderName ?? account.from_name
   const fromHeader = `${fromName} <${fromAddress}>`
 
-  // Threading headers
+  // ── Threading headers (RFC 2822) ──────────────────────────────────────────
   let inReplyTo: string | undefined
   let references: string | undefined
   let threadId: string
@@ -65,7 +73,7 @@ sendRoutes.post('/', async (c) => {
     threadId = crypto.randomUUID()
   }
 
-  // Build attachments from R2
+  // ── Build attachments from R2 ─────────────────────────────────────────────
   const attachments: Array<{ filename: string; content: string }> = []
   if (attachmentKeys && attachmentKeys.length > 0) {
     for (const key of attachmentKeys) {
@@ -73,7 +81,7 @@ sendRoutes.post('/', async (c) => {
         const obj = await c.env.R2.get(key)
         if (obj) {
           const buffer = await obj.arrayBuffer()
-          // Use reduce to avoid RangeError on large files (spread fails >~1MB)
+          // Use reduce to avoid RangeError on large files (Array spread fails >~1MB)
           const base64 = btoa(
             new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
           )
@@ -88,32 +96,35 @@ sendRoutes.post('/', async (c) => {
     }
   }
 
-  // Send via Resend — template mode or inline HTML mode
+  // ── Send via Resend ───────────────────────────────────────────────────────
+  // Template mode uses Resend's template_id field (SDK v4+ format).
+  // Inline mode passes html + optional attachments.
+  const threadingHeaders = {
+    ...(inReplyTo ? { 'In-Reply-To': inReplyTo } : {}),
+    ...(references ? { References: references } : {}),
+  }
+
   const sendPayload = templateId
     ? {
         from: fromHeader,
         to,
-        ...(cc ? { cc } : {}),
-        ...(bcc ? { bcc } : {}),
+        ...(cc?.length ? { cc } : {}),
+        ...(bcc?.length ? { bcc } : {}),
         subject,
-        template: { id: templateId, variables: templateVariables ?? {} },
-        headers: {
-          ...(inReplyTo ? { 'In-Reply-To': inReplyTo } : {}),
-          ...(references ? { References: references } : {}),
-        },
+        // Resend SDK v4: use template_id at root level, variables as top-level fields
+        template_id: templateId,
+        ...(templateVariables && Object.keys(templateVariables).length > 0 ? templateVariables : {}),
+        headers: threadingHeaders,
       }
     : {
         from: fromHeader,
         to,
-        ...(cc ? { cc } : {}),
-        ...(bcc ? { bcc } : {}),
+        ...(cc?.length ? { cc } : {}),
+        ...(bcc?.length ? { bcc } : {}),
         subject,
         html: html ?? '',
         ...(text ? { text } : {}),
-        headers: {
-          ...(inReplyTo ? { 'In-Reply-To': inReplyTo } : {}),
-          ...(references ? { References: references } : {}),
-        },
+        headers: threadingHeaders,
         ...(attachments.length > 0 ? { attachments } : {}),
       }
 
@@ -124,7 +135,7 @@ sendRoutes.post('/', async (c) => {
     return c.json({ success: false, error: error.message }, 400)
   }
 
-  // Save sent email to DB
+  // ── Save sent email to DB ─────────────────────────────────────────────────
   const emailId = nanoid()
   await c.env.DB.prepare(`
     INSERT INTO emails (
@@ -140,8 +151,8 @@ sendRoutes.post('/', async (c) => {
     inReplyTo ?? null,
     fromName, fromAddress,
     JSON.stringify(to),
-    cc ? JSON.stringify(cc) : null,
-    bcc ? JSON.stringify(bcc) : null,
+    cc?.length ? JSON.stringify(cc) : null,
+    bcc?.length ? JSON.stringify(bcc) : null,
     subject, html ?? null, text ?? null,
     data?.id ?? null
   ).run()
@@ -149,7 +160,7 @@ sendRoutes.post('/', async (c) => {
   return c.json({ success: true, data: { id: emailId, resendId: data?.id } })
 })
 
-// POST /api/send/draft — save draft
+// POST /api/send/draft — create or update a draft
 sendRoutes.post('/draft', async (c) => {
   const body = await c.req.json<{
     accountId: string
@@ -159,20 +170,27 @@ sendRoutes.post('/draft', async (c) => {
     existingDraftId?: string
   }>()
 
+  if (!body.accountId) {
+    return c.json({ success: false, error: 'accountId is required' }, 400)
+  }
+
   const emailId = body.existingDraftId ?? nanoid()
 
   if (body.existingDraftId) {
+    // Update existing draft
     await c.env.DB.prepare(`
       UPDATE emails SET
         recipient_to = ?, subject = ?, body_html = ?
-      WHERE id = ? AND folder = 'drafts'
+      WHERE id = ? AND folder = 'drafts' AND account_id = ?
     `).bind(
       JSON.stringify(body.to ?? []),
-      body.subject ?? '',
+      body.subject ?? '(Draft)',
       body.html ?? '',
-      emailId
+      emailId,
+      body.accountId,
     ).run()
   } else {
+    // Create new draft
     await c.env.DB.prepare(`
       INSERT INTO emails (
         id, account_id, thread_id, message_id,
@@ -182,7 +200,7 @@ sendRoutes.post('/draft', async (c) => {
       ) VALUES (?, ?, ?, null, 'drafts', 'outbound', ?, ?, ?, ?, 1, 'pending')
     `).bind(
       emailId, body.accountId, crypto.randomUUID(),
-      `noreply@draft`,
+      `draft@${emailId}`,
       JSON.stringify(body.to ?? []),
       body.subject ?? '(Draft)',
       body.html ?? '',
