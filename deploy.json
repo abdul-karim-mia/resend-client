@@ -5,7 +5,7 @@
   "main": "worker/src/index.ts",
   "workers_dev": true,
   "build": {
-    "command": "pnpm install --frozen-lockfile && node scripts/configure-d1.mjs && pnpm --filter frontend run build"
+    "command": "cd frontend && npm install && npm run build"
   },
   "bindings": [
     {
