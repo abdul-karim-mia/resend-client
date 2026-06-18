@@ -47,7 +47,16 @@ jobs:
       - name: Type check worker
         run: pnpm --filter worker exec tsc --noEmit
 
-      # ── 6. Build React frontend into frontend/dist/ ──────────────────────────
+      # ── 6. Auto-resolve D1 database ID → patches wrangler.jsonc ────────────
+      # Finds or creates "resend-client-db" in the Cloudflare account and writes
+      # the correct database_id into wrangler.jsonc before wrangler deploy reads it.
+      - name: Configure D1 database ID
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/configure-d1.mjs
+
+      # ── 7. Build React frontend into frontend/dist/ ──────────────────────────
       - name: Build frontend
         run: pnpm --filter frontend build
 
