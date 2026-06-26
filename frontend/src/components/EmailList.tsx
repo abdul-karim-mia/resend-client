@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAppStore } from '../store'
 import { useEmails, useSearchEmails, useMoveFolder, useDeleteEmail, useToggleStar } from '../queries'
 import type { Email } from '../queries'
+import BulkActionBar from './BulkActionBar'
 
 function formatTime(dateStr: string): string {
   const date = new Date(dateStr)
@@ -42,6 +43,10 @@ export default function EmailList() {
   const setEmail = useAppStore((s) => s.setEmail)
   const setPage = useAppStore((s) => s.setEmailListPage)
   const setSearchQuery = useAppStore((s) => s.setSearchQuery)
+  const selectedIds = useAppStore((s) => s.selectedIds)
+  const toggleSelect = useAppStore((s) => s.toggleSelect)
+  const setSelection = useAppStore((s) => s.setSelection)
+  const clearSelection = useAppStore((s) => s.clearSelection)
 
   const isSearching = searchQuery.length > 0
   const { data: regularEmails, isLoading: regularLoading, isError: regularError } = useEmails(accountId, folder, page, EMAILS_PER_PAGE)
@@ -53,6 +58,13 @@ export default function EmailList() {
 
   const hasNextPage = emails && emails.length === EMAILS_PER_PAGE
   const canPrevPage = page > 1
+
+  const selectedSet = new Set(selectedIds)
+  const allOnPageSelected = !!emails && emails.length > 0 && emails.every((e) => selectedSet.has(e.id))
+  const toggleSelectAll = () => {
+    if (allOnPageSelected) clearSelection()
+    else setSelection(emails ? emails.map((e) => e.id) : [])
+  }
 
   const handleSearch = (value: string) => {
     setSearchInput(value)
@@ -86,7 +98,7 @@ export default function EmailList() {
   }, [])
 
   return (
-    <div className="email-list" id="email-list">
+    <div className="email-list" id="email-list" style={{ position: 'relative' }}>
       {/* Header */}
       <div style={{
         padding: '8px 12px',
@@ -151,16 +163,28 @@ export default function EmailList() {
           fontSize: 12,
           color: 'var(--text-muted)',
         }}>
-          <h2 style={{
-            fontSize: 13,
-            fontWeight: 700,
-            textTransform: 'capitalize',
-            margin: 0,
-            letterSpacing: '-0.01em',
-            color: 'var(--text-primary)',
-          }}>
-            {isSearching ? `Search results for "${searchQuery}"` : folder}
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {emails && emails.length > 0 && (
+              <input
+                type="checkbox"
+                checked={allOnPageSelected}
+                onChange={toggleSelectAll}
+                aria-label="Select all on page"
+                title="Select all"
+                style={{ cursor: 'pointer', accentColor: 'var(--accent)', width: 14, height: 14 }}
+              />
+            )}
+            <h2 style={{
+              fontSize: 13,
+              fontWeight: 700,
+              textTransform: 'capitalize',
+              margin: 0,
+              letterSpacing: '-0.01em',
+              color: 'var(--text-primary)',
+            }}>
+              {isSearching ? `Search results for "${searchQuery}"` : folder}
+            </h2>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {page > 1 && !isSearching && (
               <span style={{ fontSize: 11 }}>
@@ -235,11 +259,16 @@ export default function EmailList() {
             key={email.id}
             email={email}
             isActive={email.id === selectedEmailId}
+            isSelected={selectedSet.has(email.id)}
+            onToggleSelect={() => toggleSelect(email.id)}
             onClick={() => setEmail(email.id)}
             animationDelay={idx * 0.03}
           />
         ))}
       </div>
+
+      {/* Bulk action bar (appears when rows are selected) */}
+      <BulkActionBar />
 
       {/* Pagination footer (only when not searching) */}
       {!isSearching && (canPrevPage || hasNextPage) && (
@@ -292,11 +321,13 @@ function getDeliveryIcon(status: string): string {
 interface EmailItemProps {
   email: Email
   isActive: boolean
+  isSelected: boolean
+  onToggleSelect: () => void
   onClick: () => void
   animationDelay: number
 }
 
-function EmailItem({ email, isActive, onClick, animationDelay }: EmailItemProps) {
+function EmailItem({ email, isActive, isSelected, onToggleSelect, onClick, animationDelay }: EmailItemProps) {
   const [isHovered, setIsHovered] = useState(false)
   const isUnread = email.read_status === 0 && email.direction === 'inbound'
   const hasAttachments = email.attachment_count && email.attachment_count > 0
@@ -348,6 +379,8 @@ function EmailItem({ email, isActive, onClick, animationDelay }: EmailItemProps)
         animationDelay: `${animationDelay}s`,
         animation: 'fadeIn 0.25s var(--ease-out) both',
         position: 'relative',
+        background: isSelected ? 'var(--accent-subtle)' : undefined,
+        boxShadow: isSelected ? 'inset 3px 0 0 var(--accent)' : undefined,
       }}
       role="button"
       tabIndex={0}
@@ -357,6 +390,17 @@ function EmailItem({ email, isActive, onClick, animationDelay }: EmailItemProps)
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3, gap: 8 }}>
         <span className="email-sender" style={{ display: 'flex', alignItems: 'center', gap: 5, maxWidth: '60%', overflow: 'hidden' }}>
+          {/* Selection checkbox — visible on hover or when selected */}
+          {(isHovered || isSelected) && (
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onClick={(e) => e.stopPropagation()}
+              onChange={onToggleSelect}
+              aria-label="Select email"
+              style={{ cursor: 'pointer', accentColor: 'var(--accent)', width: 14, height: 14, flexShrink: 0 }}
+            />
+          )}
           {/* Star toggle */}
           <button
             onClick={(e) => {

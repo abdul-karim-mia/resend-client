@@ -20,6 +20,7 @@ interface AppState {
   emailListPage: number
   searchQuery: string
   isSearching: boolean
+  selectedIds: string[]
 
   // UI state
   composerOpen: boolean
@@ -38,6 +39,9 @@ interface AppState {
   setEmailListPage: (page: number) => void
   setSearchQuery: (query: string) => void
   setIsSearching: (searching: boolean) => void
+  toggleSelect: (id: string) => void
+  setSelection: (ids: string[]) => void
+  clearSelection: () => void
   openComposer: (replyToId?: string) => void
   closeComposer: () => void
   toggleCommandPalette: () => void
@@ -56,6 +60,7 @@ export const useAppStore = create<AppState>()(
       emailListPage: 1,
       searchQuery: '',
       isSearching: false,
+      selectedIds: [],
       composerOpen: false,
       composerReplyToId: null,
       commandPaletteOpen: false,
@@ -63,12 +68,19 @@ export const useAppStore = create<AppState>()(
       sidebarOpen: false,
       toasts: [],
 
-      setAccount: (id) => set({ selectedAccountId: id, selectedEmailId: null, emailListPage: 1, searchQuery: '', isSearching: false }),
+      setAccount: (id) => set({ selectedAccountId: id, selectedEmailId: null, emailListPage: 1, searchQuery: '', isSearching: false, selectedIds: [] }),
       setEmail: (id) => set({ selectedEmailId: id }),
-      setFolder: (folder) => set({ selectedFolder: folder, selectedEmailId: null, emailListPage: 1, searchQuery: '', isSearching: false }),
-      setEmailListPage: (page) => set({ emailListPage: page, selectedEmailId: null }),
+      setFolder: (folder) => set({ selectedFolder: folder, selectedEmailId: null, emailListPage: 1, searchQuery: '', isSearching: false, selectedIds: [] }),
+      setEmailListPage: (page) => set({ emailListPage: page, selectedEmailId: null, selectedIds: [] }),
       setSearchQuery: (query) => set({ searchQuery: query, emailListPage: 1 }),
       setIsSearching: (searching) => set({ isSearching: searching }),
+      toggleSelect: (id) => set((s) => ({
+        selectedIds: s.selectedIds.includes(id)
+          ? s.selectedIds.filter((x) => x !== id)
+          : [...s.selectedIds, id],
+      })),
+      setSelection: (ids) => set({ selectedIds: ids }),
+      clearSelection: () => set({ selectedIds: [] }),
       openComposer: (replyToId) =>
         set({ composerOpen: true, composerReplyToId: replyToId ?? null }),
       closeComposer: () => set({ composerOpen: false, composerReplyToId: null }),
