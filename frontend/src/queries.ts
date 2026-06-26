@@ -54,6 +54,13 @@ export interface Email {
   delivery_status: string
   created_at: string
   attachment_count?: number
+  label_count?: number
+  is_starred?: number
+  is_pinned?: number
+  snoozed_until?: string | null
+  scheduled_at?: string | null
+  reply_to?: string | null
+  raw_headers?: string | null
 }
 
 export interface Attachment {
@@ -318,6 +325,44 @@ export function useDeleteEmail() {
       apiFetch(`/emails/${emailId}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['emails'] })
+    },
+  })
+}
+
+export function useToggleStar() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ emailId, starred }: { emailId: string; starred: boolean }) =>
+      apiFetch(`/emails/${emailId}/star`, { method: 'PUT', body: JSON.stringify({ starred }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['emails'] })
+      qc.invalidateQueries({ queryKey: ['unread-counts'] })
+    },
+  })
+}
+
+export function useTogglePin() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ emailId, pinned }: { emailId: string; pinned: boolean }) =>
+      apiFetch(`/emails/${emailId}/pin`, { method: 'PUT', body: JSON.stringify({ pinned }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['emails'] })
+    },
+  })
+}
+
+export function useBulkAction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: {
+      ids: string[]
+      action: 'read' | 'unread' | 'folder' | 'star' | 'unstar' | 'delete'
+      value?: string
+    }) => apiFetch<{ affected: number }>('/emails/bulk', { method: 'POST', body: JSON.stringify(payload) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['emails'] })
+      qc.invalidateQueries({ queryKey: ['unread-counts'] })
     },
   })
 }

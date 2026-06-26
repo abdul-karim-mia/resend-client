@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAppStore } from '../store'
-import { useEmails, useSearchEmails, useMoveFolder, useDeleteEmail } from '../queries'
+import { useEmails, useSearchEmails, useMoveFolder, useDeleteEmail, useToggleStar } from '../queries'
 import type { Email } from '../queries'
 
 function formatTime(dateStr: string): string {
@@ -314,8 +314,12 @@ function EmailItem({ email, isActive, onClick, animationDelay }: EmailItemProps)
     : `To: ${recipients}`
 
   const deliveryIcon = email.direction === 'outbound' ? getDeliveryIcon(email.delivery_status) : null
+  const isStarred = email.is_starred === 1
+  const isPinned = email.is_pinned === 1
+  const hasLabels = email.label_count && email.label_count > 0
   const moveFolder = useMoveFolder()
   const deleteEmail = useDeleteEmail()
+  const toggleStar = useToggleStar()
   const addToast = useAppStore((s) => s.addToast)
 
   const handleArchive = () => {
@@ -352,10 +356,32 @@ function EmailItem({ email, isActive, onClick, animationDelay }: EmailItemProps)
       aria-label={`Email from ${displayName}: ${email.subject ?? '(no subject)'}${hasAttachments ? ' with attachments' : ''}`}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3, gap: 8 }}>
-        <span className="email-sender" style={{ maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {displayName}
+        <span className="email-sender" style={{ display: 'flex', alignItems: 'center', gap: 5, maxWidth: '60%', overflow: 'hidden' }}>
+          {/* Star toggle */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              toggleStar.mutate({ emailId: email.id, starred: !isStarred })
+            }}
+            title={isStarred ? 'Unstar' : 'Star'}
+            aria-label={isStarred ? 'Unstar email' : 'Star email'}
+            aria-pressed={isStarred}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+              fontSize: 12, lineHeight: 1, flexShrink: 0,
+              color: isStarred ? 'var(--warning)' : 'var(--text-muted)',
+              filter: isStarred ? 'none' : 'grayscale(1) opacity(0.6)',
+            }}
+          >
+            {isStarred ? '⭐' : '☆'}
+          </button>
+          {isPinned && <span title="Pinned" aria-label="Pinned" style={{ fontSize: 10, flexShrink: 0 }}>📌</span>}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {displayName}
+          </span>
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, whiteSpace: 'nowrap' }}>
+          {hasLabels && <span title={`${email.label_count} label(s)`}>🏷️</span>}
           {hasAttachments && <span title="Has attachments">📎</span>}
           {deliveryIcon && <span title={email.delivery_status}>{deliveryIcon}</span>}
           <span className="email-time">{formatTime(email.created_at)}</span>

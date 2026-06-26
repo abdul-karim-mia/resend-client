@@ -13,18 +13,35 @@ const listSchema = z.object({
 })
 
 // GET /api/emails — list emails
+//
+// Folders fall into two kinds:
+//  - Physical folders (inbox/sent/drafts/archive/trash/spam/scheduled): matched
+//    on emails.folder.
+//  - Virtual folders (starred): a cross-folder view defined by a flag. Starred
+//    shows is_starred = 1 from everywhere except trash.
+// Pinned emails always sort to the top within any view.
 emailRoutes.get('/', zValidator('query', listSchema), async (c) => {
   const { accountId, folder, page, limit } = c.req.valid('query')
   const offset = (page - 1) * limit
 
+  const where =
+    folder === 'starred'
+      ? `e.account_id = ? AND e.is_starred = 1 AND e.folder != 'trash'`
+      : `e.account_id = ? AND e.folder = ?`
+
+  const binds = folder === 'starred'
+    ? [accountId, limit, offset]
+    : [accountId, folder, limit, offset]
+
   const { results } = await c.env.DB.prepare(`
     SELECT e.*,
-      (SELECT COUNT(*) FROM attachments a WHERE a.email_id = e.id) as attachment_count
+      (SELECT COUNT(*) FROM attachments a WHERE a.email_id = e.id) as attachment_count,
+      (SELECT COUNT(*) FROM email_labels el WHERE el.email_id = e.id) as label_count
     FROM emails e
-    WHERE e.account_id = ? AND e.folder = ?
-    ORDER BY e.created_at DESC
+    WHERE ${where}
+    ORDER BY e.is_pinned DESC, e.created_at DESC
     LIMIT ? OFFSET ?
-  `).bind(accountId, folder, limit, offset).all<Email & { attachment_count: number }>()
+  `).bind(...binds).all<Email & { attachment_count: number }>()
 
   return c.json({ success: true, data: results })
 })
@@ -79,6 +96,14 @@ emailRoutes.get('/unread-counts/:accountId', async (c) => {
     }
   })
 
+  // "starred" is a virtual folder — count unread starred mail across folders.
+  const starred = await c.env.DB.prepare(`
+    SELECT COUNT(*) as n FROM emails
+    WHERE account_id = ? AND is_starred = 1 AND read_status = 0
+      AND direction = 'inbound' AND folder != 'trash'
+  `).bind(accountId).first<{ n: number }>()
+  counts.starred = starred?.n ?? 0
+
   return c.json({ success: true, data: counts })
 })
 
@@ -95,10 +120,18 @@ emailRoutes.get('/:id', async (c) => {
     `SELECT id, filename, content_type, size_bytes FROM attachments WHERE email_id = ?`
   ).bind(id).all()
 
+  // Labels attached to this email
+  const { results: labels } = await c.env.DB.prepare(`
+    SELECT l.id, l.name, l.color
+    FROM email_labels el JOIN labels l ON l.id = el.label_id
+    WHERE el.email_id = ?
+    ORDER BY l.name ASC
+  `).bind(id).all()
+
   // Mark as read
   await c.env.DB.prepare(`UPDATE emails SET read_status = 1 WHERE id = ?`).bind(id).run()
 
-  return c.json({ success: true, data: { ...email, attachments } })
+  return c.json({ success: true, data: { ...email, attachments, labels } })
 })
 
 // PUT /api/emails/:id/read — toggle read status
@@ -125,6 +158,62 @@ emailRoutes.put('/:id/folder', async (c) => {
   await c.env.DB.prepare(`UPDATE emails SET folder = ? WHERE id = ?`).bind(folder, id).run()
 
   return c.json({ success: true, data: null })
+})
+
+// PUT /api/emails/:id/star — toggle starred flag
+emailRoutes.put('/:id/star', async (c) => {
+  const id = c.req.param('id')
+  const { starred } = await c.req.json<{ starred: boolean }>()
+  await c.env.DB.prepare(`UPDATE emails SET is_starred = ? WHERE id = ?`)
+    .bind(starred ? 1 : 0, id).run()
+  return c.json({ success: true, data: null })
+})
+
+// PUT /api/emails/:id/pin — toggle pinned flag
+emailRoutes.put('/:id/pin', async (c) => {
+  const id = c.req.param('id')
+  const { pinned } = await c.req.json<{ pinned: boolean }>()
+  await c.env.DB.prepare(`UPDATE emails SET is_pinned = ? WHERE id = ?`)
+    .bind(pinned ? 1 : 0, id).run()
+  return c.json({ success: true, data: null })
+})
+
+// POST /api/emails/bulk — apply an action to multiple emails at once
+emailRoutes.post('/bulk', async (c) => {
+  const { ids, action, value } = await c.req.json<{
+    ids: string[]
+    action: 'read' | 'unread' | 'folder' | 'star' | 'unstar' | 'delete'
+    value?: string
+  }>()
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return c.json({ success: false, error: 'ids required' }, 400)
+  }
+  // Cap to a sane batch size to protect the DB.
+  const batch = ids.slice(0, 500)
+  const placeholders = batch.map(() => '?').join(',')
+
+  let sql: string
+  let binds: unknown[]
+  switch (action) {
+    case 'read':   sql = `UPDATE emails SET read_status = 1 WHERE id IN (${placeholders})`; binds = batch; break
+    case 'unread': sql = `UPDATE emails SET read_status = 0 WHERE id IN (${placeholders})`; binds = batch; break
+    case 'star':   sql = `UPDATE emails SET is_starred = 1 WHERE id IN (${placeholders})`; binds = batch; break
+    case 'unstar': sql = `UPDATE emails SET is_starred = 0 WHERE id IN (${placeholders})`; binds = batch; break
+    case 'delete': sql = `DELETE FROM emails WHERE id IN (${placeholders})`; binds = batch; break
+    case 'folder': {
+      const valid = ['inbox', 'sent', 'drafts', 'trash', 'archive', 'spam', 'starred', 'scheduled']
+      if (!value || !valid.includes(value)) return c.json({ success: false, error: 'Invalid folder' }, 400)
+      sql = `UPDATE emails SET folder = ? WHERE id IN (${placeholders})`
+      binds = [value, ...batch]
+      break
+    }
+    default:
+      return c.json({ success: false, error: 'Invalid action' }, 400)
+  }
+
+  await c.env.DB.prepare(sql).bind(...binds).run()
+  return c.json({ success: true, data: { affected: batch.length } })
 })
 
 // DELETE /api/emails/:id — permanent delete (only from trash)

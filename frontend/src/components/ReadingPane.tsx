@@ -1,5 +1,5 @@
 import { useAppStore } from '../store'
-import { useEmail, useMoveFolder, useMarkRead } from '../queries'
+import { useEmail, useMoveFolder, useMarkRead, useToggleStar, useTogglePin } from '../queries'
 import SafeEmailViewer from './SafeEmailViewer'
 import QuickReply from './QuickReply'
 
@@ -24,6 +24,8 @@ export default function ReadingPane() {
   const selectedAccountId = useAppStore((s) => s.selectedAccountId)
   const moveFolder = useMoveFolder()
   const markRead = useMarkRead()
+  const toggleStar = useToggleStar()
+  const togglePin = useTogglePin()
 
   const { data: email, isLoading } = useEmail(emailId)
 
@@ -143,6 +145,25 @@ export default function ReadingPane() {
         <button id="action-trash" className="btn btn-ghost" style={{ fontSize: 12, gap: 6, color: 'var(--text-muted)' }} onClick={handleTrash}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
           Trash
+        </button>
+        <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 4px' }} />
+        <button
+          id="action-star"
+          className="btn btn-ghost"
+          style={{ fontSize: 12, gap: 6, color: email.is_starred === 1 ? 'var(--warning)' : undefined }}
+          onClick={() => toggleStar.mutate({ emailId: email.id, starred: email.is_starred !== 1 })}
+          title={email.is_starred === 1 ? 'Unstar' : 'Star'}
+        >
+          {email.is_starred === 1 ? '⭐' : '☆'} {email.is_starred === 1 ? 'Starred' : 'Star'}
+        </button>
+        <button
+          id="action-pin"
+          className="btn btn-ghost"
+          style={{ fontSize: 12, gap: 6, color: email.is_pinned === 1 ? 'var(--accent-light)' : undefined }}
+          onClick={() => togglePin.mutate({ emailId: email.id, pinned: email.is_pinned !== 1 })}
+          title={email.is_pinned === 1 ? 'Unpin' : 'Pin to top'}
+        >
+          📌 {email.is_pinned === 1 ? 'Pinned' : 'Pin'}
         </button>
         <button
           id="action-read-toggle"
