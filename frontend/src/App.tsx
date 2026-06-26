@@ -4,6 +4,7 @@ import EmailList from './components/EmailList'
 import ReadingPane from './components/ReadingPane'
 import Composer from './components/Composer'
 import { ShortcutsOverlay, useKeyboardShortcuts } from './components/Shortcuts'
+import CommandPalette from './components/CommandPalette'
 import { useAppStore } from './store'
 import { useAuth } from './queries'
 import { useApplyTheme } from './theme'
@@ -78,6 +79,9 @@ function AppShell() {
           replyToEmailId={composerReplyToId}
         />
       )}
+
+      {/* Command palette (⌘K) */}
+      <CommandPalette />
 
       {/* Shortcuts overlay */}
       <ShortcutsOverlay />

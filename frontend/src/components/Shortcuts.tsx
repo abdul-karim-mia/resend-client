@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useAppStore } from '../store'
 
 /**
@@ -21,9 +21,12 @@ export function useKeyboardShortcuts() {
   const composerOpen = useAppStore((s) => s.composerOpen)
   const selectedEmailId = useAppStore((s) => s.selectedEmailId)
   const setEmail = useAppStore((s) => s.setEmail)
+  const setFolder = useAppStore((s) => s.setFolder)
   const toggleCommandPalette = useAppStore((s) => s.toggleCommandPalette)
   const toggleShortcuts = useAppStore((s) => s.toggleShortcuts)
   const commandPaletteOpen = useAppStore((s) => s.commandPaletteOpen)
+  // Tracks a pending "g" prefix for Gmail-style sequences (g then i / g then s).
+  const gPendingRef = useRef(0)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -43,6 +46,25 @@ export function useKeyboardShortcuts() {
         if (e.key === 'k') { e.preventDefault(); toggleCommandPalette(); return }
       }
 
+      // Gmail-style "g then X" sequences (e.g. g i → inbox, g s → sent).
+      const now = Date.now()
+      const gActive = now - gPendingRef.current < 1200
+      if (e.key === 'g' || e.key === 'G') {
+        e.preventDefault()
+        gPendingRef.current = now
+        return
+      }
+      if (gActive) {
+        gPendingRef.current = 0
+        const map: Record<string, () => void> = {
+          i: () => setFolder('inbox'), s: () => setFolder('sent'),
+          d: () => setFolder('drafts'), t: () => setFolder('trash'),
+          a: () => setFolder('archive'),
+        }
+        const fn = map[e.key.toLowerCase()]
+        if (fn) { e.preventDefault(); fn(); return }
+      }
+
       switch (e.key) {
         case 'c': case 'C':
           e.preventDefault()
@@ -51,6 +73,18 @@ export function useKeyboardShortcuts() {
         case 'r': case 'R':
           e.preventDefault()
           if (selectedEmailId) openComposer(selectedEmailId)
+          break
+        case 'a': case 'A':
+          e.preventDefault()
+          if (selectedEmailId) triggerButton('action-reply-all')
+          break
+        case 'f': case 'F':
+          e.preventDefault()
+          triggerButton('action-forward')
+          break
+        case 's': case 'S':
+          e.preventDefault()
+          triggerButton('action-star')
           break
         case 'e': case 'E':
           e.preventDefault()
@@ -115,7 +149,7 @@ export function useKeyboardShortcuts() {
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [composerOpen, commandPaletteOpen, selectedEmailId, openComposer, closeComposer, setEmail, toggleCommandPalette, toggleShortcuts])
+  }, [composerOpen, commandPaletteOpen, selectedEmailId, openComposer, closeComposer, setEmail, setFolder, toggleCommandPalette, toggleShortcuts])
 }
 
 export function ShortcutsOverlay() {
@@ -127,11 +161,16 @@ export function ShortcutsOverlay() {
   const shortcuts = [
     { key: 'C', desc: 'Compose new email' },
     { key: 'R', desc: 'Reply to selected email' },
+    { key: 'A', desc: 'Reply all' },
+    { key: 'F', desc: 'Forward' },
     { key: 'E', desc: 'Archive email' },
+    { key: 'S', desc: 'Star email' },
     { key: '#', desc: 'Delete / Move to trash' },
     { key: 'U', desc: 'Toggle read/unread' },
     { key: 'J', desc: 'Next email' },
     { key: 'K', desc: 'Previous email' },
+    { key: 'G then I', desc: 'Go to Inbox' },
+    { key: 'G then S', desc: 'Go to Sent' },
     { key: '/', desc: 'Focus search' },
     { key: '⌘ K', desc: 'Command palette' },
     { key: '?', desc: 'Show shortcuts' },
