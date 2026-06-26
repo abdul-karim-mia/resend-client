@@ -6,8 +6,9 @@ import Composer from './components/Composer'
 import { ShortcutsOverlay, useKeyboardShortcuts } from './components/Shortcuts'
 import { useAppStore } from './store'
 import { useAuth } from './queries'
+import { useApplyTheme } from './theme'
 import LoginPage from './pages/Login'
-import SettingsPanel from './components/SettingsPanel'
+import SettingsLayout from './components/settings/SettingsLayout'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -21,6 +22,7 @@ const queryClient = new QueryClient({
 
 function AppShell() {
   useKeyboardShortcuts()
+  useApplyTheme()
   const composerOpen = useAppStore((s) => s.composerOpen)
   const composerReplyToId = useAppStore((s) => s.composerReplyToId)
   const selectedAccountId = useAppStore((s) => s.selectedAccountId)
@@ -54,7 +56,7 @@ function AppShell() {
     <>
       <div className="app-shell">
         <Sidebar />
-        {isSettingsView ? <SettingsPanel /> : (
+        {isSettingsView ? <SettingsLayout /> : (
           <>
             <EmailList />
             <ReadingPane />

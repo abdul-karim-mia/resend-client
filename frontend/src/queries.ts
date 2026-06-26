@@ -363,6 +363,51 @@ export function useSaveDraft() {
   })
 }
 
+// ── Preferences ───────────────────────────────────────────────
+
+export interface Preferences {
+  theme: 'light' | 'dark' | 'system'
+  timezone: string
+  dateFormat: 'relative' | 'absolute'
+  language: string
+  density: 'comfortable' | 'compact'
+  defaultReplyBehavior: 'reply' | 'replyAll'
+  sendUndoSeconds: number
+  defaultFont: string
+  notifyDesktop: boolean
+  notifySound: boolean
+  notifyBadge: boolean
+  [key: string]: unknown
+}
+
+export function usePreferences() {
+  return useQuery({
+    queryKey: ['preferences'],
+    queryFn: () => apiFetch<Preferences>('/preferences'),
+    staleTime: 60_000,
+  })
+}
+
+export function useUpdatePreferences() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (patch: Partial<Preferences>) =>
+      apiFetch<Preferences>('/preferences', { method: 'PUT', body: JSON.stringify(patch) }),
+    onMutate: async (patch) => {
+      await qc.cancelQueries({ queryKey: ['preferences'] })
+      const prev = qc.getQueryData<Preferences>(['preferences'])
+      if (prev) qc.setQueryData(['preferences'], { ...prev, ...patch })
+      return { prev }
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['preferences'], ctx.prev)
+    },
+    onSuccess: (data) => {
+      qc.setQueryData(['preferences'], data)
+    },
+  })
+}
+
 // ── Resend Templates ──────────────────────────────────────────
 
 export interface ResendTemplate {
