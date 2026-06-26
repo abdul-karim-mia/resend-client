@@ -162,6 +162,13 @@ export default function Sidebar() {
       <div style={{ marginTop: 'auto' }}>
         <div className="divider" />
         <a
+          href="/analytics"
+          className={`nav-item ${window.location.pathname === '/analytics' ? 'active' : ''}`}
+          id="nav-analytics"
+        >
+          <span>📊</span> Analytics
+        </a>
+        <a
           href="/settings"
           className={`nav-item ${isSettingsView ? 'active' : ''}`}
           id="nav-settings"

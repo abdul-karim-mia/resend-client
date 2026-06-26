@@ -411,6 +411,26 @@ export function useSaveDraft() {
   })
 }
 
+// ── Analytics ─────────────────────────────────────────────────
+
+export interface Analytics {
+  days: number
+  totals: { sent: number; received: number; bounced: number; failed: number }
+  rates: { deliveryRate: number; openRate: number; bounceRate: number; failRate: number }
+  daily: Array<{ day: string; received: number; sent: number }>
+  topSenders: Array<{ email: string; name: string; count: number }>
+  topRecipients: Array<{ email: string; count: number }>
+}
+
+export function useAnalytics(accountId: string | null, days = 30) {
+  return useQuery({
+    queryKey: ['analytics', accountId, days],
+    queryFn: () => apiFetch<Analytics>(`/analytics?accountId=${accountId}&days=${days}`),
+    enabled: !!accountId,
+    staleTime: 60_000,
+  })
+}
+
 // ── Developer tooling ─────────────────────────────────────────
 
 export interface EmailEvent {
