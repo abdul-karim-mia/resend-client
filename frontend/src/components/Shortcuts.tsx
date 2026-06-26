@@ -52,6 +52,18 @@ export function useKeyboardShortcuts() {
           e.preventDefault()
           if (selectedEmailId) openComposer(selectedEmailId)
           break
+        case 'e': case 'E':
+          e.preventDefault()
+          triggerButton('action-archive')
+          break
+        case '#':
+          e.preventDefault()
+          triggerButton('action-trash')
+          break
+        case 'u': case 'U':
+          e.preventDefault()
+          triggerButton('action-read-toggle')
+          break
         case '?':
           e.preventDefault()
           toggleShortcuts()
@@ -68,6 +80,13 @@ export function useKeyboardShortcuts() {
           if (composerOpen) closeComposer()
           if (commandPaletteOpen) toggleCommandPalette()
           break
+      }
+    }
+
+    const triggerButton = (id: string) => {
+      const button = document.getElementById(id)
+      if (button && button instanceof HTMLButtonElement) {
+        button.click()
       }
     }
 
@@ -108,8 +127,8 @@ export function ShortcutsOverlay() {
   const shortcuts = [
     { key: 'C', desc: 'Compose new email' },
     { key: 'R', desc: 'Reply to selected email' },
-    { key: 'E', desc: 'Archive' },
-    { key: '#', desc: 'Move to trash' },
+    { key: 'E', desc: 'Archive email' },
+    { key: '#', desc: 'Delete / Move to trash' },
     { key: 'U', desc: 'Toggle read/unread' },
     { key: 'J', desc: 'Next email' },
     { key: 'K', desc: 'Previous email' },
