@@ -91,6 +91,26 @@ export default function ReadingPane() {
     try { return (JSON.parse(email.recipient_to) as string[]).join(', ') } catch { return email.recipient_to }
   })()
 
+  const ccRecipients = email.recipient_cc ? (() => {
+    try { return (JSON.parse(email.recipient_cc) as string[]).join(', ') } catch { return email.recipient_cc }
+  })() : null
+
+  const bccRecipients = email.recipient_bcc ? (() => {
+    try { return (JSON.parse(email.recipient_bcc) as string[]).join(', ') } catch { return email.recipient_bcc }
+  })() : null
+
+  const getDeliveryBadge = () => {
+    const statuses: Record<string, { label: string; color: string; icon: string }> = {
+      pending: { label: 'Pending', color: 'var(--text-muted)', icon: '🔄' },
+      sent: { label: 'Sent', color: 'var(--accent-light)', icon: '📤' },
+      delivered: { label: 'Delivered', color: 'var(--accent-light)', icon: '✅' },
+      opened: { label: 'Opened', color: 'var(--accent)', icon: '👁' },
+      bounced: { label: 'Bounced', color: '#dc2626', icon: '⚠️' },
+      failed: { label: 'Failed', color: '#dc2626', icon: '❌' },
+    }
+    return statuses[email.delivery_status] || { label: email.delivery_status, color: 'var(--text-muted)', icon: '❓' }
+  }
+
   return (
     <div className="reading-pane">
       {/* Action bar */}
@@ -105,6 +125,12 @@ export default function ReadingPane() {
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
           Reply
         </button>
+        {email.direction === 'inbound' && (
+          <button id="action-reply-all" className="btn btn-ghost" style={{ fontSize: 12, gap: 6 }} onClick={() => openComposer(email.id)} title="Reply to all recipients">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><circle cx="9" cy="10" r="1"/><circle cx="12" cy="10" r="1"/><circle cx="15" cy="10" r="1"/></svg>
+            Reply All
+          </button>
+        )}
         <button id="action-forward" className="btn btn-ghost" style={{ fontSize: 12, gap: 6 }} onClick={() => openComposer()}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>
           Forward
@@ -131,9 +157,22 @@ export default function ReadingPane() {
 
       {/* Email header */}
       <div style={{ padding: '20px 24px 18px', borderBottom: '1px solid var(--border)' }}>
-        <h1 style={{ fontSize: 19, fontWeight: 700, marginBottom: 14, letterSpacing: '-0.02em', lineHeight: 1.3 }}>
-          {email.subject ?? '(no subject)'}
-        </h1>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+          <h1 style={{ fontSize: 19, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.3, flex: 1 }}>
+            {email.subject ?? '(no subject)'}
+          </h1>
+          {email.direction === 'outbound' && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '4px 10px', borderRadius: 'var(--radius-md)',
+              background: 'var(--accent-subtle)', color: getDeliveryBadge().color,
+              fontSize: 12, fontWeight: 500, flexShrink: 0, whiteSpace: 'nowrap',
+            }}>
+              <span>{getDeliveryBadge().icon}</span>
+              {getDeliveryBadge().label}
+            </div>
+          )}
+        </div>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
           {/* Avatar */}
           <div style={{
@@ -161,9 +200,23 @@ export default function ReadingPane() {
                 {formatDate(email.created_at)}
               </span>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{recipients}</span>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{recipients}</span>
+              </div>
+              {ccRecipients && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.7, minWidth: 16 }}>Cc:</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ccRecipients}</span>
+                </div>
+              )}
+              {bccRecipients && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.7, minWidth: 16 }}>Bcc:</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{bccRecipients}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>

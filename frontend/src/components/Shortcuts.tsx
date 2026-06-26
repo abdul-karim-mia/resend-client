@@ -9,17 +9,18 @@ import { useAppStore } from '../store'
  * - E        → Archive
  * - #        → Trash
  * - U        → Mark unread
+ * - J/K      → Next/prev email
  * - /        → Focus search (future)
  * - Cmd+K    → Command palette
  * - ?        → Shortcuts overlay
  * - Esc      → Close modals
- * - J/K      → Next/prev email (future)
  */
 export function useKeyboardShortcuts() {
   const openComposer = useAppStore((s) => s.openComposer)
   const closeComposer = useAppStore((s) => s.closeComposer)
   const composerOpen = useAppStore((s) => s.composerOpen)
   const selectedEmailId = useAppStore((s) => s.selectedEmailId)
+  const setEmail = useAppStore((s) => s.setEmail)
   const toggleCommandPalette = useAppStore((s) => s.toggleCommandPalette)
   const toggleShortcuts = useAppStore((s) => s.toggleShortcuts)
   const commandPaletteOpen = useAppStore((s) => s.commandPaletteOpen)
@@ -43,9 +44,26 @@ export function useKeyboardShortcuts() {
       }
 
       switch (e.key) {
-        case 'c': case 'C': openComposer(); break
-        case 'r': case 'R': if (selectedEmailId) openComposer(selectedEmailId); break
-        case '?': toggleShortcuts(); break
+        case 'c': case 'C':
+          e.preventDefault()
+          openComposer()
+          break
+        case 'r': case 'R':
+          e.preventDefault()
+          if (selectedEmailId) openComposer(selectedEmailId)
+          break
+        case '?':
+          e.preventDefault()
+          toggleShortcuts()
+          break
+        case 'j': case 'J':
+          e.preventDefault()
+          navigateEmailList(1)
+          break
+        case 'k': case 'K':
+          e.preventDefault()
+          navigateEmailList(-1)
+          break
         case 'Escape':
           if (composerOpen) closeComposer()
           if (commandPaletteOpen) toggleCommandPalette()
@@ -53,9 +71,32 @@ export function useKeyboardShortcuts() {
       }
     }
 
+    const navigateEmailList = (direction: 1 | -1) => {
+      const emailItems = Array.from(document.querySelectorAll('[id^="email-item-"]')) as HTMLElement[]
+      if (emailItems.length === 0) return
+
+      let nextIndex = 0
+      if (selectedEmailId) {
+        const currentIndex = emailItems.findIndex((el) => {
+          const id = el.id.replace('email-item-', '')
+          return id === selectedEmailId
+        })
+        if (currentIndex >= 0) {
+          nextIndex = Math.max(0, Math.min(currentIndex + direction, emailItems.length - 1))
+        }
+      }
+
+      const nextElement = emailItems[nextIndex]
+      if (nextElement) {
+        const emailId = nextElement.id.replace('email-item-', '')
+        setEmail(emailId)
+        nextElement.scrollIntoView({ block: 'nearest' })
+      }
+    }
+
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [composerOpen, commandPaletteOpen, selectedEmailId])
+  }, [composerOpen, commandPaletteOpen, selectedEmailId, openComposer, closeComposer, setEmail, toggleCommandPalette, toggleShortcuts])
 }
 
 export function ShortcutsOverlay() {
@@ -70,6 +111,8 @@ export function ShortcutsOverlay() {
     { key: 'E', desc: 'Archive' },
     { key: '#', desc: 'Move to trash' },
     { key: 'U', desc: 'Toggle read/unread' },
+    { key: 'J', desc: 'Next email' },
+    { key: 'K', desc: 'Previous email' },
     { key: '/', desc: 'Focus search' },
     { key: '⌘ K', desc: 'Command palette' },
     { key: '?', desc: 'Show shortcuts' },

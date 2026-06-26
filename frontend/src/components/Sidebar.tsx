@@ -6,6 +6,9 @@ const FOLDERS = [
   { id: 'inbox', label: 'Inbox', icon: '📥' },
   { id: 'sent', label: 'Sent', icon: '📤' },
   { id: 'drafts', label: 'Drafts', icon: '📝' },
+  { id: 'starred', label: 'Starred', icon: '⭐' },
+  { id: 'spam', label: 'Spam', icon: '⚠️' },
+  { id: 'scheduled', label: 'Scheduled', icon: '⏰' },
   { id: 'archive', label: 'Archive', icon: '📦' },
   { id: 'trash', label: 'Trash', icon: '🗑️' },
 ]

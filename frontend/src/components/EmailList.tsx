@@ -123,6 +123,18 @@ export default function EmailList() {
   )
 }
 
+function getDeliveryIcon(status: string): string {
+  switch (status) {
+    case 'pending': return '🔄'
+    case 'sent': return '📤'
+    case 'delivered': return '✅'
+    case 'opened': return '👁'
+    case 'bounced': return '⚠️'
+    case 'failed': return '❌'
+    default: return '❓'
+  }
+}
+
 interface EmailItemProps {
   email: Email
   isActive: boolean
@@ -132,6 +144,7 @@ interface EmailItemProps {
 
 function EmailItem({ email, isActive, onClick, animationDelay }: EmailItemProps) {
   const isUnread = email.read_status === 0 && email.direction === 'inbound'
+  const hasAttachments = email.attachment_count && email.attachment_count > 0
   const recipients = (() => {
     try {
       const arr = JSON.parse(email.recipient_to) as string[]
@@ -145,6 +158,8 @@ function EmailItem({ email, isActive, onClick, animationDelay }: EmailItemProps)
     ? (email.sender_name || email.sender_email)
     : `To: ${recipients}`
 
+  const deliveryIcon = email.direction === 'outbound' ? getDeliveryIcon(email.delivery_status) : null
+
   return (
     <div
       id={`email-item-${email.id}`}
@@ -155,13 +170,17 @@ function EmailItem({ email, isActive, onClick, animationDelay }: EmailItemProps)
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && onClick()}
       aria-selected={isActive}
-      aria-label={`Email from ${displayName}: ${email.subject ?? '(no subject)'}`}
+      aria-label={`Email from ${displayName}: ${email.subject ?? '(no subject)'}${hasAttachments ? ' with attachments' : ''}`}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
-        <span className="email-sender" style={{ maxWidth: '75%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3, gap: 8 }}>
+        <span className="email-sender" style={{ maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {displayName}
         </span>
-        <span className="email-time">{formatTime(email.created_at)}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, whiteSpace: 'nowrap' }}>
+          {hasAttachments && <span title="Has attachments">📎</span>}
+          {deliveryIcon && <span title={email.delivery_status}>{deliveryIcon}</span>}
+          <span className="email-time">{formatTime(email.created_at)}</span>
+        </div>
       </div>
       <div className="email-subject">{email.subject ?? '(no subject)'}</div>
       <div className="email-snippet">{email.body_text?.slice(0, 80) ?? ''}</div>

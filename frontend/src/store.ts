@@ -16,7 +16,7 @@ interface AppState {
   // Selected email/account
   selectedAccountId: string | null
   selectedEmailId: string | null
-  selectedFolder: 'inbox' | 'sent' | 'drafts' | 'trash' | 'archive'
+  selectedFolder: 'inbox' | 'sent' | 'drafts' | 'trash' | 'archive' | 'spam' | 'starred' | 'scheduled'
 
   // UI state
   composerOpen: boolean
