@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAppStore } from '../store'
-import { useEmails, useSearchEmails } from '../queries'
+import { useEmails, useSearchEmails, useMoveFolder, useDeleteEmail } from '../queries'
 import type { Email } from '../queries'
 
 function formatTime(dateStr: string): string {
@@ -271,6 +271,7 @@ interface EmailItemProps {
 }
 
 function EmailItem({ email, isActive, onClick, animationDelay }: EmailItemProps) {
+  const [isHovered, setIsHovered] = useState(false)
   const isUnread = email.read_status === 0 && email.direction === 'inbound'
   const hasAttachments = email.attachment_count && email.attachment_count > 0
   const recipients = (() => {
@@ -287,13 +288,37 @@ function EmailItem({ email, isActive, onClick, animationDelay }: EmailItemProps)
     : `To: ${recipients}`
 
   const deliveryIcon = email.direction === 'outbound' ? getDeliveryIcon(email.delivery_status) : null
+  const moveFolder = useMoveFolder()
+  const deleteEmail = useDeleteEmail()
+  const addToast = useAppStore((s) => s.addToast)
+
+  const handleArchive = () => {
+    moveFolder.mutate({ emailId: email.id, folder: 'archive' })
+    addToast('Archived', 'success')
+  }
+
+  const handleSpam = () => {
+    moveFolder.mutate({ emailId: email.id, folder: 'spam' })
+    addToast('Marked as spam', 'success')
+  }
+
+  const handleDelete = () => {
+    deleteEmail.mutate(email.id)
+    addToast('Deleted', 'success')
+  }
 
   return (
     <div
       id={`email-item-${email.id}`}
       className={`email-item ${isActive ? 'active' : ''} ${isUnread ? 'unread' : ''}`}
       onClick={onClick}
-      style={{ animationDelay: `${animationDelay}s`, animation: 'fadeIn 0.25s var(--ease-out) both' }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{
+        animationDelay: `${animationDelay}s`,
+        animation: 'fadeIn 0.25s var(--ease-out) both',
+        position: 'relative',
+      }}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && onClick()}
@@ -312,6 +337,106 @@ function EmailItem({ email, isActive, onClick, animationDelay }: EmailItemProps)
       </div>
       <div className="email-subject">{email.subject ?? '(no subject)'}</div>
       <div className="email-snippet">{email.body_text?.slice(0, 80) ?? ''}</div>
+
+      {/* Quick actions (show on hover) */}
+      {isHovered && (
+        <div style={{
+          position: 'absolute',
+          right: 8,
+          top: '50%',
+          transform: 'translateY(-50%)',
+          display: 'flex',
+          gap: 4,
+          opacity: 0.9,
+        }}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              handleArchive()
+            }}
+            title="Archive (E)"
+            style={{
+              padding: '4px 8px',
+              fontSize: 12,
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)',
+              cursor: 'pointer',
+              color: 'var(--text-muted)',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--accent-subtle)'
+              e.currentTarget.style.borderColor = 'var(--border-accent)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--bg-elevated)'
+              e.currentTarget.style.borderColor = 'var(--border)'
+            }}
+          >
+            📦
+          </button>
+          {email.folder !== 'spam' && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                handleSpam()
+              }}
+              title="Mark as spam"
+              style={{
+                padding: '4px 8px',
+                fontSize: 12,
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)',
+                cursor: 'pointer',
+                color: 'var(--text-muted)',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--accent-subtle)'
+                e.currentTarget.style.borderColor = 'var(--border-accent)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'var(--bg-elevated)'
+                e.currentTarget.style.borderColor = 'var(--border)'
+              }}
+            >
+              ⚠️
+            </button>
+          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              handleDelete()
+            }}
+            title="Delete (#)"
+            style={{
+              padding: '4px 8px',
+              fontSize: 12,
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)',
+              cursor: 'pointer',
+              color: 'var(--text-muted)',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#fee'
+              e.currentTarget.style.borderColor = '#f00'
+              e.currentTarget.style.color = '#d00'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--bg-elevated)'
+              e.currentTarget.style.borderColor = 'var(--border)'
+              e.currentTarget.style.color = 'var(--text-muted)'
+            }}
+          >
+            🗑️
+          </button>
+        </div>
+      )}
+
       {isUnread && <span className="unread-dot" aria-hidden="true" />}
     </div>
   )
