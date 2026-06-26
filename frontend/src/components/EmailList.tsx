@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { useAppStore } from '../store'
-import { useEmails } from '../queries'
+import { useEmails, useSearchEmails } from '../queries'
 import type { Email } from '../queries'
 
 function formatTime(dateStr: string): string {
@@ -29,48 +30,128 @@ function EmailSkeleton() {
 const EMAILS_PER_PAGE = 50
 
 export default function EmailList() {
+  const [searchInput, setSearchInput] = useState('')
   const accountId = useAppStore((s) => s.selectedAccountId)
   const folder = useAppStore((s) => s.selectedFolder)
   const page = useAppStore((s) => s.emailListPage)
+  const searchQuery = useAppStore((s) => s.searchQuery)
   const selectedEmailId = useAppStore((s) => s.selectedEmailId)
   const setEmail = useAppStore((s) => s.setEmail)
   const setPage = useAppStore((s) => s.setEmailListPage)
+  const setSearchQuery = useAppStore((s) => s.setSearchQuery)
 
-  const { data: emails, isLoading, isError } = useEmails(accountId, folder, page, EMAILS_PER_PAGE)
+  const isSearching = searchQuery.length > 0
+  const { data: regularEmails, isLoading: regularLoading, isError: regularError } = useEmails(accountId, folder, page, EMAILS_PER_PAGE)
+  const { data: searchResults, isLoading: searchLoading, isError: searchError } = useSearchEmails(accountId, searchQuery)
+
+  const emails = isSearching ? searchResults : regularEmails
+  const isLoading = isSearching ? searchLoading : regularLoading
+  const isError = isSearching ? searchError : regularError
 
   const hasNextPage = emails && emails.length === EMAILS_PER_PAGE
   const canPrevPage = page > 1
+
+  const handleSearch = (value: string) => {
+    setSearchInput(value)
+    if (value.length > 0) {
+      setSearchQuery(value)
+    } else {
+      setSearchQuery('')
+    }
+  }
 
   return (
     <div className="email-list" id="email-list">
       {/* Header */}
       <div style={{
-        padding: '12px 16px 10px',
+        padding: '8px 12px',
         borderBottom: '1px solid var(--border)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
         background: 'var(--bg-elevated)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
       }}>
-        <h2 style={{ fontSize: 14, fontWeight: 700, textTransform: 'capitalize', margin: 0, letterSpacing: '-0.01em' }}>
-          {folder}
-        </h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {page > 1 && (
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              Page {page}
-            </span>
+        {/* Search bar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input
+            type="text"
+            placeholder="Search emails..."
+            value={searchInput}
+            onChange={(e) => handleSearch(e.target.value)}
+            style={{
+              flex: 1,
+              padding: '6px 10px',
+              fontSize: 13,
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--bg-base)',
+              color: 'var(--text-primary)',
+              fontFamily: 'inherit',
+              outline: 'none',
+              transition: 'border-color 0.2s',
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = 'var(--border-accent)'
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = 'var(--border)'
+            }}
+          />
+          {searchInput && (
+            <button
+              onClick={() => handleSearch('')}
+              style={{
+                padding: '4px 8px',
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                fontSize: 16,
+                flexShrink: 0,
+              }}
+              title="Clear search"
+            >
+              ✕
+            </button>
           )}
-          {emails && emails.length > 0 && (
-            <span style={{
-              fontSize: 11, fontWeight: 600,
-              padding: '2px 7px', borderRadius: 'var(--radius-full)',
-              background: 'var(--accent-subtle)', color: 'var(--accent-light)',
-              border: '1px solid var(--border-accent)',
-            }}>
-              {emails.length} / page
-            </span>
-          )}
+        </div>
+
+        {/* Info bar */}
+        <div style={{
+          padding: '4px 4px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          fontSize: 12,
+          color: 'var(--text-muted)',
+        }}>
+          <h2 style={{
+            fontSize: 13,
+            fontWeight: 700,
+            textTransform: 'capitalize',
+            margin: 0,
+            letterSpacing: '-0.01em',
+            color: 'var(--text-primary)',
+          }}>
+            {isSearching ? `Search results for "${searchQuery}"` : folder}
+          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {page > 1 && !isSearching && (
+              <span style={{ fontSize: 11 }}>
+                Page {page}
+              </span>
+            )}
+            {emails && emails.length > 0 && (
+              <span style={{
+                fontSize: 11, fontWeight: 600,
+                padding: '2px 7px', borderRadius: 'var(--radius-full)',
+                background: 'var(--accent-subtle)', color: 'var(--accent-light)',
+                border: '1px solid var(--border-accent)',
+              }}>
+                {isSearching ? `${emails.length} found` : `${emails.length} / page`}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -134,8 +215,8 @@ export default function EmailList() {
         ))}
       </div>
 
-      {/* Pagination footer */}
-      {(canPrevPage || hasNextPage) && (
+      {/* Pagination footer (only when not searching) */}
+      {!isSearching && (canPrevPage || hasNextPage) && (
         <div style={{
           display: 'flex',
           alignItems: 'center',

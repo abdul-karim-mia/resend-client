@@ -18,6 +18,8 @@ interface AppState {
   selectedEmailId: string | null
   selectedFolder: 'inbox' | 'sent' | 'drafts' | 'trash' | 'archive' | 'spam' | 'starred' | 'scheduled'
   emailListPage: number
+  searchQuery: string
+  isSearching: boolean
 
   // UI state
   composerOpen: boolean
@@ -34,6 +36,8 @@ interface AppState {
   setEmail: (id: string | null) => void
   setFolder: (folder: AppState['selectedFolder']) => void
   setEmailListPage: (page: number) => void
+  setSearchQuery: (query: string) => void
+  setIsSearching: (searching: boolean) => void
   openComposer: (replyToId?: string) => void
   closeComposer: () => void
   toggleCommandPalette: () => void
@@ -50,6 +54,8 @@ export const useAppStore = create<AppState>()(
       selectedEmailId: null,
       selectedFolder: 'inbox',
       emailListPage: 1,
+      searchQuery: '',
+      isSearching: false,
       composerOpen: false,
       composerReplyToId: null,
       commandPaletteOpen: false,
@@ -57,10 +63,12 @@ export const useAppStore = create<AppState>()(
       sidebarOpen: false,
       toasts: [],
 
-      setAccount: (id) => set({ selectedAccountId: id, selectedEmailId: null, emailListPage: 1 }),
+      setAccount: (id) => set({ selectedAccountId: id, selectedEmailId: null, emailListPage: 1, searchQuery: '', isSearching: false }),
       setEmail: (id) => set({ selectedEmailId: id }),
-      setFolder: (folder) => set({ selectedFolder: folder, selectedEmailId: null, emailListPage: 1 }),
+      setFolder: (folder) => set({ selectedFolder: folder, selectedEmailId: null, emailListPage: 1, searchQuery: '', isSearching: false }),
       setEmailListPage: (page) => set({ emailListPage: page, selectedEmailId: null }),
+      setSearchQuery: (query) => set({ searchQuery: query, emailListPage: 1 }),
+      setIsSearching: (searching) => set({ isSearching: searching }),
       openComposer: (replyToId) =>
         set({ composerOpen: true, composerReplyToId: replyToId ?? null }),
       closeComposer: () => set({ composerOpen: false, composerReplyToId: null }),
