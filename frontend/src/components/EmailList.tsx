@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAppStore } from '../store'
 import { useEmails, useSearchEmails, useMoveFolder, useDeleteEmail } from '../queries'
 import type { Email } from '../queries'
@@ -27,9 +27,12 @@ function EmailSkeleton() {
   )
 }
 
+import { useRef } from 'react'
+
 const EMAILS_PER_PAGE = 50
 
 export default function EmailList() {
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const [searchInput, setSearchInput] = useState('')
   const accountId = useAppStore((s) => s.selectedAccountId)
   const folder = useAppStore((s) => s.selectedFolder)
@@ -60,6 +63,28 @@ export default function EmailList() {
     }
   }
 
+  // Focus search input on "/" key
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Don't fire in inputs/textareas
+      const target = e.target as HTMLElement
+      const isEditing = target.tagName === 'INPUT'
+        || target.tagName === 'TEXTAREA'
+        || target.isContentEditable
+        || target.closest('.ProseMirror')
+
+      if (isEditing) return
+
+      if (e.key === '/') {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+      }
+    }
+
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
   return (
     <div className="email-list" id="email-list">
       {/* Header */}
@@ -74,8 +99,9 @@ export default function EmailList() {
         {/* Search bar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <input
+            ref={searchInputRef}
             type="text"
-            placeholder="Search emails..."
+            placeholder="Search emails... (press / to focus)"
             value={searchInput}
             onChange={(e) => handleSearch(e.target.value)}
             style={{
