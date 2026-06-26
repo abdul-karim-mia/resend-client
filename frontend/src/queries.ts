@@ -266,6 +266,17 @@ export function useSearchEmails(accountId: string | null, query: string) {
   })
 }
 
+export function useUnreadCounts(accountId: string | null) {
+  return useQuery({
+    queryKey: ['unread-counts', accountId],
+    queryFn: () =>
+      apiFetch<Record<string, number>>(`/emails/unread-counts/${accountId}`),
+    enabled: !!accountId,
+    refetchInterval: 15_000,
+    staleTime: 5_000,
+  })
+}
+
 // ── Mutations ─────────────────────────────────────────────────
 
 export function useMarkRead() {

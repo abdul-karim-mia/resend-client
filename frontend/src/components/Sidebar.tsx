@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useAppStore } from '../store'
-import { useAccounts, useLogout } from '../queries'
+import { useAccounts, useLogout, useUnreadCounts } from '../queries'
 
 const FOLDERS = [
   { id: 'inbox', label: 'Inbox', icon: '📥' },
@@ -15,6 +15,7 @@ const FOLDERS = [
 
 export default function Sidebar() {
   const { data: accounts, isLoading: loadingAccounts } = useAccounts()
+  const { data: unreadCounts } = useUnreadCounts(useAppStore((s) => s.selectedAccountId))
   const selectedAccountId = useAppStore((s) => s.selectedAccountId)
   const selectedFolder = useAppStore((s) => s.selectedFolder)
   const setAccount = useAppStore((s) => s.setAccount)
@@ -126,17 +127,34 @@ export default function Sidebar() {
           <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', padding: '0 10px 4px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
             Folders
           </p>
-          {FOLDERS.map((folder) => (
-            <button
-              key={folder.id}
-              id={`folder-${folder.id}`}
-              className={`nav-item ${selectedFolder === folder.id ? 'active' : ''}`}
-              onClick={() => setFolder(folder.id as typeof selectedFolder)}
-            >
-              <span>{folder.icon}</span>
-              {folder.label}
-            </button>
-          ))}
+          {FOLDERS.map((folder) => {
+            const unreadCount = unreadCounts?.[folder.id] ?? 0
+            return (
+              <button
+                key={folder.id}
+                id={`folder-${folder.id}`}
+                className={`nav-item ${selectedFolder === folder.id ? 'active' : ''}`}
+                onClick={() => setFolder(folder.id as typeof selectedFolder)}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>{folder.icon}</span>
+                  {folder.label}
+                </span>
+                {unreadCount > 0 && (
+                  <span style={{
+                    fontSize: 11, fontWeight: 600,
+                    padding: '1px 6px', borderRadius: 'var(--radius-full)',
+                    background: 'var(--accent)', color: 'white',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    minWidth: 20, height: 20,
+                  }}>
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </button>
+            )
+          })}
         </>
       )}
 

@@ -7,7 +7,7 @@ export const emailRoutes = new Hono<{ Bindings: Bindings }>()
 
 const listSchema = z.object({
   accountId: z.string(),
-  folder: z.enum(['inbox', 'sent', 'drafts', 'trash', 'archive']).optional().default('inbox'),
+  folder: z.enum(['inbox', 'sent', 'drafts', 'trash', 'archive', 'spam', 'starred', 'scheduled']).optional().default('inbox'),
   page: z.coerce.number().int().positive().optional().default(1),
   limit: z.coerce.number().int().positive().max(100).optional().default(50),
 })
@@ -49,6 +49,39 @@ emailRoutes.get('/search', async (c) => {
   return c.json({ success: true, data: results })
 })
 
+// GET /api/emails/unread-counts — get unread counts per folder
+emailRoutes.get('/unread-counts/:accountId', async (c) => {
+  const accountId = c.req.param('accountId')
+
+  const { results } = await c.env.DB.prepare(`
+    SELECT
+      folder,
+      COUNT(CASE WHEN read_status = 0 AND direction = 'inbound' THEN 1 END) as unread_count
+    FROM emails
+    WHERE account_id = ?
+    GROUP BY folder
+  `).bind(accountId).all<{ folder: string; unread_count: number }>()
+
+  const counts: Record<string, number> = {
+    inbox: 0,
+    sent: 0,
+    drafts: 0,
+    trash: 0,
+    archive: 0,
+    spam: 0,
+    starred: 0,
+    scheduled: 0,
+  }
+
+  results.forEach(({ folder, unread_count }) => {
+    if (folder in counts) {
+      counts[folder] = unread_count
+    }
+  })
+
+  return c.json({ success: true, data: counts })
+})
+
 // GET /api/emails/:id — single email with attachments
 emailRoutes.get('/:id', async (c) => {
   const id = c.req.param('id')
@@ -84,7 +117,7 @@ emailRoutes.put('/:id/folder', async (c) => {
   const id = c.req.param('id')
   const { folder } = await c.req.json<{ folder: string }>()
 
-  const validFolders = ['inbox', 'sent', 'drafts', 'trash', 'archive']
+  const validFolders = ['inbox', 'sent', 'drafts', 'trash', 'archive', 'spam', 'starred', 'scheduled']
   if (!validFolders.includes(folder)) {
     return c.json({ success: false, error: 'Invalid folder' }, 400)
   }
