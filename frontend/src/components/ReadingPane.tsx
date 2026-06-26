@@ -119,7 +119,7 @@ export default function ReadingPane() {
   }
 
   return (
-    <div className="reading-pane">
+    <div className="reading-pane active">
       {/* Action bar */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 4,
@@ -128,6 +128,14 @@ export default function ReadingPane() {
         background: 'var(--bg-surface)',
         flexWrap: 'wrap',
       }}>
+        <button
+          className="mobile-back-btn btn btn-ghost"
+          onClick={() => useAppStore.getState().setEmail(null)}
+          aria-label="Back to list"
+          style={{ display: 'none', fontSize: 14, padding: '6px 9px' }}
+        >
+          ←
+        </button>
         <button id="action-reply" className="btn btn-ghost" style={{ fontSize: 12, gap: 6 }} onClick={() => openComposer(email.id)}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
           Reply

@@ -443,11 +443,19 @@ code, pre { font-family: 'JetBrains Mono', monospace; }
 
 /* ── Responsive: mobile single-panel ───────────────────────── */
 @media (max-width: 768px) {
-  .sidebar { position: fixed; left: -220px; top: 0; height: 100vh; z-index: 100; transition: left var(--duration-base) var(--ease-out); }
+  .sidebar { position: fixed; left: -240px; top: 0; height: 100dvh; z-index: 100; transition: left var(--duration-base) var(--ease-out); box-shadow: var(--shadow-lg); }
   .sidebar.open { left: 0; }
   .email-list { width: 100%; }
   .reading-pane { display: none; }
   .reading-pane.active { display: flex; position: fixed; inset: 0; z-index: 50; }
+  /* Reveal mobile-only controls */
+  .mobile-menu-btn { display: inline-flex !important; align-items: center; justify-content: center; }
+  .mobile-back-btn { display: inline-flex !important; align-items: center; justify-content: center; }
+}
+
+@media (min-width: 769px) {
+  /* The backdrop is only meaningful on mobile */
+  .sidebar-backdrop { display: none; }
 }
 
 /* ── Accessibility ──────────────────────────────────────────── */

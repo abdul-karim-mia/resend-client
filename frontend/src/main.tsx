@@ -13,3 +13,11 @@ createRoot(root).render(
     <App />
   </StrictMode>
 )
+
+// Register the service worker for PWA installability + offline app shell.
+// Only in production builds and when served over a secure context.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => { /* non-fatal */ })
+  })
+}

@@ -110,6 +110,18 @@ export default function EmailList() {
       }}>
         {/* Search bar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button
+            className="mobile-menu-btn"
+            onClick={() => useAppStore.getState().toggleSidebar()}
+            aria-label="Open menu"
+            style={{
+              display: 'none', background: 'var(--bg-base)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-md)', cursor: 'pointer', color: 'var(--text-secondary)',
+              padding: '6px 9px', fontSize: 14, flexShrink: 0,
+            }}
+          >
+            ☰
+          </button>
           <input
             ref={searchInputRef}
             type="text"
