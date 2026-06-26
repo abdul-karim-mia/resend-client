@@ -45,6 +45,8 @@ export interface Email {
   sender_name: string | null
   sender_email: string
   recipient_to: string
+  recipient_cc: string | null
+  recipient_bcc: string | null
   subject: string | null
   body_html: string | null
   body_text: string | null
