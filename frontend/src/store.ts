@@ -17,6 +17,7 @@ interface AppState {
   selectedAccountId: string | null
   selectedEmailId: string | null
   selectedFolder: 'inbox' | 'sent' | 'drafts' | 'trash' | 'archive' | 'spam' | 'starred' | 'scheduled'
+  emailListPage: number
 
   // UI state
   composerOpen: boolean
@@ -32,6 +33,7 @@ interface AppState {
   setAccount: (id: string) => void
   setEmail: (id: string | null) => void
   setFolder: (folder: AppState['selectedFolder']) => void
+  setEmailListPage: (page: number) => void
   openComposer: (replyToId?: string) => void
   closeComposer: () => void
   toggleCommandPalette: () => void
@@ -47,6 +49,7 @@ export const useAppStore = create<AppState>()(
       selectedAccountId: null,
       selectedEmailId: null,
       selectedFolder: 'inbox',
+      emailListPage: 1,
       composerOpen: false,
       composerReplyToId: null,
       commandPaletteOpen: false,
@@ -54,9 +57,10 @@ export const useAppStore = create<AppState>()(
       sidebarOpen: false,
       toasts: [],
 
-      setAccount: (id) => set({ selectedAccountId: id, selectedEmailId: null }),
+      setAccount: (id) => set({ selectedAccountId: id, selectedEmailId: null, emailListPage: 1 }),
       setEmail: (id) => set({ selectedEmailId: id }),
-      setFolder: (folder) => set({ selectedFolder: folder, selectedEmailId: null }),
+      setFolder: (folder) => set({ selectedFolder: folder, selectedEmailId: null, emailListPage: 1 }),
+      setEmailListPage: (page) => set({ emailListPage: page, selectedEmailId: null }),
       openComposer: (replyToId) =>
         set({ composerOpen: true, composerReplyToId: replyToId ?? null }),
       closeComposer: () => set({ composerOpen: false, composerReplyToId: null }),

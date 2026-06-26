@@ -26,13 +26,20 @@ function EmailSkeleton() {
   )
 }
 
+const EMAILS_PER_PAGE = 50
+
 export default function EmailList() {
   const accountId = useAppStore((s) => s.selectedAccountId)
   const folder = useAppStore((s) => s.selectedFolder)
+  const page = useAppStore((s) => s.emailListPage)
   const selectedEmailId = useAppStore((s) => s.selectedEmailId)
   const setEmail = useAppStore((s) => s.setEmail)
+  const setPage = useAppStore((s) => s.setEmailListPage)
 
-  const { data: emails, isLoading, isError } = useEmails(accountId, folder)
+  const { data: emails, isLoading, isError } = useEmails(accountId, folder, page, EMAILS_PER_PAGE)
+
+  const hasNextPage = emails && emails.length === EMAILS_PER_PAGE
+  const canPrevPage = page > 1
 
   return (
     <div className="email-list" id="email-list">
@@ -48,16 +55,23 @@ export default function EmailList() {
         <h2 style={{ fontSize: 14, fontWeight: 700, textTransform: 'capitalize', margin: 0, letterSpacing: '-0.01em' }}>
           {folder}
         </h2>
-        {emails && emails.length > 0 && (
-          <span style={{
-            fontSize: 11, fontWeight: 600,
-            padding: '2px 7px', borderRadius: 'var(--radius-full)',
-            background: 'var(--accent-subtle)', color: 'var(--accent-light)',
-            border: '1px solid var(--border-accent)',
-          }}>
-            {emails.length}
-          </span>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {page > 1 && (
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              Page {page}
+            </span>
+          )}
+          {emails && emails.length > 0 && (
+            <span style={{
+              fontSize: 11, fontWeight: 600,
+              padding: '2px 7px', borderRadius: 'var(--radius-full)',
+              background: 'var(--accent-subtle)', color: 'var(--accent-light)',
+              border: '1px solid var(--border-accent)',
+            }}>
+              {emails.length} / page
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Email items */}
@@ -119,6 +133,39 @@ export default function EmailList() {
           />
         ))}
       </div>
+
+      {/* Pagination footer */}
+      {(canPrevPage || hasNextPage) && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+          padding: '12px 16px',
+          borderTop: '1px solid var(--border)',
+          background: 'var(--bg-elevated)',
+        }}>
+          <button
+            disabled={!canPrevPage}
+            onClick={() => setPage(page - 1)}
+            className="btn btn-ghost"
+            style={{ fontSize: 12, opacity: canPrevPage ? 1 : 0.5, cursor: canPrevPage ? 'pointer' : 'default' }}
+          >
+            ← Previous
+          </button>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            Page {page}
+          </span>
+          <button
+            disabled={!hasNextPage}
+            onClick={() => setPage(page + 1)}
+            className="btn btn-ghost"
+            style={{ fontSize: 12, opacity: hasNextPage ? 1 : 0.5, cursor: hasNextPage ? 'pointer' : 'default' }}
+          >
+            Next →
+          </button>
+        </div>
+      )}
     </div>
   )
 }

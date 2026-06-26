@@ -234,12 +234,14 @@ export function useAllSenders(accounts: Account[] | undefined) {
 export function useEmails(
   accountId: string | null,
   folder: string,
+  page = 1,
+  limit = 50,
   refetchInterval = 30_000
 ) {
   return useQuery({
-    queryKey: ['emails', accountId, folder],
+    queryKey: ['emails', accountId, folder, page, limit],
     queryFn: () =>
-      apiFetch<Email[]>(`/emails?accountId=${accountId}&folder=${folder}`),
+      apiFetch<Email[]>(`/emails?accountId=${accountId}&folder=${folder}&page=${page}&limit=${limit}`),
     enabled: !!accountId,
     refetchInterval,
     staleTime: 10_000,
