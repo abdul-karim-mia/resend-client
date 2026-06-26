@@ -7,6 +7,7 @@ import { ShortcutsOverlay, useKeyboardShortcuts } from './components/Shortcuts'
 import { useAppStore } from './store'
 import { useAuth } from './queries'
 import { useApplyTheme } from './theme'
+import { useNotifications } from './notifications'
 import LoginPage from './pages/Login'
 import SettingsLayout from './components/settings/SettingsLayout'
 import Dashboard from './components/Dashboard'
@@ -25,6 +26,7 @@ const queryClient = new QueryClient({
 function AppShell() {
   useKeyboardShortcuts()
   useApplyTheme()
+  useNotifications()
   const composerOpen = useAppStore((s) => s.composerOpen)
   const composerReplyToId = useAppStore((s) => s.composerReplyToId)
   const selectedAccountId = useAppStore((s) => s.selectedAccountId)

@@ -6,7 +6,7 @@
 // data-theme="light" when light should be shown, and clear it for dark.
 
 import { useEffect } from 'react'
-import { usePreferences } from './queries'
+import { usePreferences, useAuth } from './queries'
 
 export type ThemeSetting = 'light' | 'dark' | 'system'
 
@@ -47,7 +47,10 @@ export function initThemeEarly() {
  * the OS setting (when 'system'). Mount once near the app root.
  */
 export function useApplyTheme() {
-  const { data: prefs } = usePreferences()
+  // Only fetch preferences once authenticated; pre-login the theme comes from
+  // localStorage via initThemeEarly().
+  const { data: auth } = useAuth()
+  const { data: prefs } = usePreferences(!!auth)
   const setting = (prefs?.theme as ThemeSetting | undefined) ?? 'system'
 
   useEffect(() => {

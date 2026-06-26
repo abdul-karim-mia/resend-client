@@ -659,10 +659,11 @@ export interface Preferences {
   [key: string]: unknown
 }
 
-export function usePreferences() {
+export function usePreferences(enabled = true) {
   return useQuery({
     queryKey: ['preferences'],
     queryFn: () => apiFetch<Preferences>('/preferences'),
+    enabled,
     staleTime: 60_000,
   })
 }
