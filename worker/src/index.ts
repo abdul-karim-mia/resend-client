@@ -21,6 +21,7 @@ import { signatureRoutes } from './routes/signatures'
 import { devRoutes } from './routes/dev'
 import { analyticsRoutes } from './routes/analytics'
 import { contactRoutes } from './routes/contacts'
+import { securityRoutes } from './routes/security'
 import { ensureDbInitialized } from './db'
 import { runMigrations } from './migrations'
 import { dispatchDueEmails } from './scheduler'
@@ -87,6 +88,7 @@ app.route('/api/signatures', signatureRoutes)
 app.route('/api/dev', devRoutes)
 app.route('/api/analytics', analyticsRoutes)
 app.route('/api/contacts', contactRoutes)
+app.route('/api/security', securityRoutes)
 
 // Global error handler
 app.onError((err, c) => {

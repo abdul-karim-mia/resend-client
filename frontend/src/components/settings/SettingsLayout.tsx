@@ -5,8 +5,9 @@ import GeneralSettings from './GeneralSettings'
 import NotificationSettings from './NotificationSettings'
 import EmailSettings from './EmailSettings'
 import DeveloperSettings from './DeveloperSettings'
+import SecuritySettings from './SecuritySettings'
 
-type TabId = 'accounts' | 'general' | 'appearance' | 'email' | 'notifications' | 'developer'
+type TabId = 'accounts' | 'general' | 'appearance' | 'email' | 'notifications' | 'security' | 'developer'
 
 const TABS: Array<{ id: TabId; label: string; icon: string }> = [
   { id: 'accounts', label: 'Accounts', icon: '👤' },
@@ -14,6 +15,7 @@ const TABS: Array<{ id: TabId; label: string; icon: string }> = [
   { id: 'appearance', label: 'Appearance', icon: '🎨' },
   { id: 'email', label: 'Email', icon: '✉️' },
   { id: 'notifications', label: 'Notifications', icon: '🔔' },
+  { id: 'security', label: 'Security', icon: '🔒' },
   { id: 'developer', label: 'Developer', icon: '⟨⟩' },
 ]
 
@@ -84,6 +86,7 @@ export default function SettingsLayout() {
             {tab === 'appearance' && <AppearanceSettings />}
             {tab === 'email' && <EmailSettings />}
             {tab === 'notifications' && <NotificationSettings />}
+            {tab === 'security' && <SecuritySettings />}
             {tab === 'developer' && <DeveloperSettings />}
           </div>
         </div>

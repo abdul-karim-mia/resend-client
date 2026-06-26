@@ -411,6 +411,55 @@ export function useSaveDraft() {
   })
 }
 
+// ── Security ──────────────────────────────────────────────────
+
+export interface SessionRow {
+  id: string; username: string; ip: string | null; user_agent: string | null
+  created_at: string; last_seen: string; revoked: number
+}
+export interface AuditRow {
+  id: string; action: string; detail: string | null; actor: string | null
+  ip: string | null; user_agent: string | null; created_at: string
+}
+
+export function useSecurityStatus() {
+  return useQuery({
+    queryKey: ['security-status'],
+    queryFn: () => apiFetch<{ totpEnabled: boolean }>('/security/status'),
+    staleTime: 30_000,
+  })
+}
+
+export function useTotpInit() {
+  return useMutation({
+    mutationFn: () => apiFetch<{ secret: string; uri: string }>('/security/totp/init', { method: 'POST' }),
+  })
+}
+
+export function useTotpEnable() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (code: string) => apiFetch<{ totpEnabled: boolean }>('/security/totp/enable', { method: 'POST', body: JSON.stringify({ code }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['security-status'] }),
+  })
+}
+
+export function useTotpDisable() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (code: string) => apiFetch<{ totpEnabled: boolean }>('/security/totp/disable', { method: 'POST', body: JSON.stringify({ code }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['security-status'] }),
+  })
+}
+
+export function useSessions() {
+  return useQuery({ queryKey: ['sessions'], queryFn: () => apiFetch<SessionRow[]>('/security/sessions'), staleTime: 30_000 })
+}
+
+export function useAuditLog() {
+  return useQuery({ queryKey: ['audit'], queryFn: () => apiFetch<AuditRow[]>('/security/audit'), staleTime: 30_000 })
+}
+
 // ── Contacts ──────────────────────────────────────────────────
 
 export interface Contact {
@@ -818,14 +867,32 @@ export function useAuth() {
   })
 }
 
+export class LoginError extends Error {
+  requiresTotp: boolean
+  constructor(message: string, requiresTotp: boolean) {
+    super(message)
+    this.requiresTotp = requiresTotp
+  }
+}
+
 export function useLogin() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (creds: { username: string; password: string }) =>
-      apiFetch<{ username: string }>('/auth/login', {
+    // Uses a raw fetch so we can read the `requiresTotp` flag on 401 responses
+    // (apiFetch collapses errors to a message string).
+    mutationFn: async (creds: { username: string; password: string; totpCode?: string }) => {
+      const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(creds),
-      }),
+      })
+      const data = await res.json() as { success: boolean; data?: { username: string }; error?: string; requiresTotp?: boolean }
+      if (!res.ok || !data.success) {
+        throw new LoginError(data.error ?? 'Login failed', !!data.requiresTotp)
+      }
+      return data.data as { username: string }
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['auth-me'] })
     },

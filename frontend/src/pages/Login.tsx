@@ -1,20 +1,27 @@
 import React, { useState } from 'react'
-import { useLogin } from '../queries'
+import { useLogin, LoginError } from '../queries'
 import { useAppStore } from '../store'
 
 export default function LoginPage() {
   const login = useLogin()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [totpCode, setTotpCode] = useState('')
+  const [requiresTotp, setRequiresTotp] = useState(false)
   const addToast = useAppStore((s) => s.addToast)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      await login.mutateAsync({ username, password })
+      await login.mutateAsync({ username, password, totpCode: requiresTotp ? totpCode : undefined })
       window.location.href = '/'
-    } catch {
-      addToast('Invalid username or password', 'error')
+    } catch (err) {
+      if (err instanceof LoginError && err.requiresTotp) {
+        setRequiresTotp(true)
+        addToast(totpCode ? 'Invalid two-factor code' : 'Enter your two-factor code', 'info')
+      } else {
+        addToast('Invalid username or password', 'error')
+      }
     }
   }
 
@@ -87,10 +94,32 @@ export default function LoginPage() {
             />
           </div>
 
+          {requiresTotp && (
+            <div>
+              <label
+                htmlFor="login-totp"
+                style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 6 }}
+              >
+                Two-factor code
+              </label>
+              <input
+                id="login-totp"
+                type="text"
+                inputMode="numeric"
+                value={totpCode}
+                onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                className="input"
+                placeholder="123456"
+                autoComplete="one-time-code"
+                autoFocus
+              />
+            </div>
+          )}
+
           <button
             type="submit"
             className="btn btn-primary"
-            disabled={login.isPending || !username || !password}
+            disabled={login.isPending || !username || !password || (requiresTotp && totpCode.length !== 6)}
             style={{ width: '100%', justifyContent: 'center', padding: '10px 14px', fontSize: 14, marginTop: 8 }}
           >
             {login.isPending ? (

@@ -36,6 +36,8 @@ preferenceRoutes.get('/', async (c) => {
 
   const stored: Record<string, unknown> = {}
   for (const row of results) {
+    // Never expose secure.* keys (e.g. TOTP secret) to the client.
+    if (row.key.startsWith('secure.')) continue
     try {
       stored[row.key] = JSON.parse(row.value)
     } catch {
@@ -53,7 +55,8 @@ preferenceRoutes.put('/', async (c) => {
     return c.json({ success: false, error: 'Invalid body' }, 400)
   }
 
-  const entries = Object.entries(body)
+  // Reject secure.* keys — those are managed only by the security route.
+  const entries = Object.entries(body).filter(([k]) => !k.startsWith('secure.'))
   if (entries.length === 0) {
     return c.json({ success: true, data: null })
   }
