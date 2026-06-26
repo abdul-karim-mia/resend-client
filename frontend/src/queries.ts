@@ -411,6 +411,64 @@ export function useSaveDraft() {
   })
 }
 
+// ── Developer tooling ─────────────────────────────────────────
+
+export interface EmailEvent {
+  id: string
+  account_id: string
+  email_id: string | null
+  resend_email_id: string | null
+  type: string
+  payload: string | null
+  created_at: string
+}
+
+export function useEmailEvents(emailId: string | null) {
+  return useQuery({
+    queryKey: ['email-events', emailId],
+    queryFn: () => apiFetch<EmailEvent[]>(`/dev/emails/${emailId}/events`),
+    enabled: !!emailId,
+    staleTime: 10_000,
+  })
+}
+
+export function useWebhookEvents(accountId: string | null) {
+  return useQuery({
+    queryKey: ['webhook-events', accountId],
+    queryFn: () => apiFetch<EmailEvent[]>(`/dev/webhooks?accountId=${accountId}`),
+    enabled: !!accountId,
+    refetchInterval: 20_000,
+    staleTime: 5_000,
+  })
+}
+
+export function useReplayWebhook() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => apiFetch<{ replayed: boolean; status: number }>(`/dev/webhooks/${id}/replay`, { method: 'POST' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['webhook-events'] })
+      qc.invalidateQueries({ queryKey: ['emails'] })
+    },
+  })
+}
+
+export interface DomainDiagnostics {
+  domain: string
+  health: 'healthy' | 'warning' | 'critical'
+  score: number
+  checks: Record<'spf' | 'dkim' | 'dmarc', { ok: boolean; record: string | null; detail: string }>
+}
+
+export function useDomainDiagnostics(accountId: string | null) {
+  return useQuery({
+    queryKey: ['domain-diagnostics', accountId],
+    queryFn: () => apiFetch<DomainDiagnostics>(`/dev/domain/${accountId}`),
+    enabled: !!accountId,
+    staleTime: 5 * 60_000,
+  })
+}
+
 // ── Labels ────────────────────────────────────────────────────
 
 export interface Label {

@@ -18,6 +18,7 @@ import { senderRoutes } from './routes/senders'
 import { preferenceRoutes } from './routes/preferences'
 import { labelRoutes } from './routes/labels'
 import { signatureRoutes } from './routes/signatures'
+import { devRoutes } from './routes/dev'
 import { ensureDbInitialized } from './db'
 import { runMigrations } from './migrations'
 import { dispatchDueEmails } from './scheduler'
@@ -81,6 +82,7 @@ app.route('/api/settings/accounts/:id/senders', senderRoutes)
 app.route('/api/preferences', preferenceRoutes)
 app.route('/api/labels', labelRoutes)
 app.route('/api/signatures', signatureRoutes)
+app.route('/api/dev', devRoutes)
 
 // Global error handler
 app.onError((err, c) => {

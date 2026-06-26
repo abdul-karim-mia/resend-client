@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { useAppStore } from '../store'
 import { useEmail, useMoveFolder, useMarkRead, useToggleStar, useTogglePin } from '../queries'
 import SafeEmailViewer from './SafeEmailViewer'
 import QuickReply from './QuickReply'
 import LabelPicker from './LabelPicker'
+import DeveloperPanel from './DeveloperPanel'
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleString([], {
@@ -27,6 +29,7 @@ export default function ReadingPane() {
   const markRead = useMarkRead()
   const toggleStar = useToggleStar()
   const togglePin = useTogglePin()
+  const [showDev, setShowDev] = useState(false)
 
   const { data: email, isLoading } = useEmail(emailId)
 
@@ -175,6 +178,16 @@ export default function ReadingPane() {
           <svg width="12" height="12" viewBox="0 0 24 24" fill={email.read_status === 1 ? 'none' : 'currentColor'} stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="6"/></svg>
           {email.read_status === 1 ? 'Mark unread' : 'Mark read'}
         </button>
+        <button
+          id="action-developer"
+          className="btn btn-ghost"
+          style={{ fontSize: 12, gap: 6, fontFamily: 'JetBrains Mono, monospace', color: showDev ? 'var(--accent-light)' : undefined }}
+          onClick={() => setShowDev((s) => !s)}
+          title="Developer tools: timeline, headers, source, debugger"
+          aria-pressed={showDev}
+        >
+          {'</>'} Dev
+        </button>
       </div>
 
       {/* Email header */}
@@ -276,6 +289,9 @@ export default function ReadingPane() {
           </div>
         )}
       </div>
+
+      {/* Developer tools drawer */}
+      {showDev && <DeveloperPanel email={email} />}
 
       {/* Attachments */}
       {email.attachments && email.attachments.length > 0 && (
