@@ -4,7 +4,7 @@ import { useAppStore } from '../store'
 import {
   useSendEmail, useAIAdjustTone, useAIDraftReply, useAICustomPrompt,
   useResendTemplates, useResendTemplate, useAccounts, useAllSenders,
-  useEmail, useSaveDraft,
+  useEmail, useSaveDraft, useSignatures, usePreferences,
 } from '../queries'
 
 interface ComposerProps {
@@ -53,6 +53,12 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
   const [showCc, setShowCc] = useState(false)
   const [showBcc, setShowBcc] = useState(false)
   const [sending, setSending] = useState(false)
+  const [showSchedule, setShowSchedule] = useState(false)
+
+  // Signatures + preferences (undo-send window, etc.)
+  const { data: signatures = [] } = useSignatures(fromAccountId)
+  const { data: prefs } = usePreferences()
+  const undoCancelledRef = useRef(false)
 
   // Draft tracking
   const [draftId, setDraftId] = useState<string | null>(null)
@@ -244,55 +250,113 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
 
   const getEditorHtml = () => editorRef.current?.innerHTML ?? ''
 
-  // ── Send ──────────────────────────────────────────────────────────────────
-  const handleSend = async () => {
-    if (!to || !subject) return
-    setSending(true)
-    if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
+  // Append a signature to the editor body (separated by a divider).
+  const insertSignature = (html: string) => {
+    if (!editorRef.current) return
+    const current = editorRef.current.innerHTML
+    const block = `<br><div data-signature="1" style="color:#64748b;font-size:13px">— <br>${html}</div>`
+    editorRef.current.innerHTML = current && current !== '<br>' ? current + block : block
+    editorRef.current.focus()
+  }
 
+  // Schedule presets relative to now.
+  const schedulePresets: Array<{ label: string; getDate: () => Date }> = [
+    { label: 'In 1 hour', getDate: () => new Date(Date.now() + 3600_000) },
+    { label: 'In 3 hours', getDate: () => new Date(Date.now() + 3 * 3600_000) },
+    { label: 'Tomorrow 9 AM', getDate: () => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d } },
+    { label: 'Monday 9 AM', getDate: () => { const d = new Date(); const day = d.getDay(); const add = ((8 - day) % 7) || 7; d.setDate(d.getDate() + add); d.setHours(9, 0, 0, 0); return d } },
+  ]
+
+  // ── Send ──────────────────────────────────────────────────────────────────
+  // Supports immediate send, scheduled send (scheduledAt), and an optional
+  // client-side "undo send" delay driven by the user's preference.
+  const performSend = async (scheduledAt?: string) => {
     const parsed = selectedSenderKey ? parseSenderKey(selectedSenderKey) : null
     const resolvedAccountId = parsed?.accountId ?? fromAccountId
     const resolvedSenderName = parsed?.senderName
     const resolvedSenderEmail = parsed?.senderEmail
 
-    try {
-      if (templateMode && selectedTemplateId) {
-        await sendEmail.mutateAsync({
-          accountId: resolvedAccountId,
-          to: to.split(',').map((t) => t.trim()).filter(Boolean),
-          cc: cc ? cc.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
-          bcc: bcc ? bcc.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
-          subject,
-          templateId: selectedTemplateId,
-          templateVariables: Object.fromEntries(Object.entries(templateVars).map(([k, v]) => [k, v])),
-          replyToEmailId: replyToEmailId ?? undefined,
-          senderName: resolvedSenderName,
-          senderEmail: resolvedSenderEmail,
-        })
-      } else {
-        const html = getEditorHtml()
-        if (!html || html === '<br>') {
-          addToast('Email body is empty', 'error')
+    if (templateMode && selectedTemplateId) {
+      await sendEmail.mutateAsync({
+        accountId: resolvedAccountId,
+        to: to.split(',').map((t) => t.trim()).filter(Boolean),
+        cc: cc ? cc.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
+        bcc: bcc ? bcc.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
+        subject,
+        templateId: selectedTemplateId,
+        templateVariables: Object.fromEntries(Object.entries(templateVars).map(([k, v]) => [k, v])),
+        replyToEmailId: replyToEmailId ?? undefined,
+        senderName: resolvedSenderName,
+        senderEmail: resolvedSenderEmail,
+        scheduledAt,
+      })
+    } else {
+      const html = getEditorHtml()
+      if (!html || html === '<br>') {
+        addToast('Email body is empty', 'error')
+        throw new Error('empty-body')
+      }
+      await sendEmail.mutateAsync({
+        accountId: resolvedAccountId,
+        to: to.split(',').map((t) => t.trim()).filter(Boolean),
+        cc: cc ? cc.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
+        bcc: bcc ? bcc.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
+        subject,
+        html,
+        attachmentKeys: attachedFiles.map((f) => f.key),
+        replyToEmailId: replyToEmailId ?? undefined,
+        senderName: resolvedSenderName,
+        senderEmail: resolvedSenderEmail,
+        scheduledAt,
+      })
+    }
+  }
+
+  const handleSend = async (scheduledAt?: string) => {
+    if (!to || !subject) return
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
+
+    // Undo-send: for immediate sends, optionally defer by N seconds so the
+    // user can cancel. Scheduled and template sends skip the delay.
+    const undoSeconds = Number(prefs?.sendUndoSeconds ?? 0)
+    if (!scheduledAt && undoSeconds > 0) {
+      undoCancelledRef.current = false
+      const html = templateMode ? 'template' : getEditorHtml()
+      if (!templateMode && (!html || html === '<br>')) {
+        addToast('Email body is empty', 'error')
+        return
+      }
+      setSending(true)
+      addToast(
+        `Sending in ${undoSeconds}s…`, 'info',
+        { label: 'Undo', onClick: () => { undoCancelledRef.current = true } },
+        undoSeconds * 1000,
+      )
+      window.setTimeout(async () => {
+        if (undoCancelledRef.current) {
           setSending(false)
+          addToast('Send cancelled — back to draft', 'info')
           return
         }
-        await sendEmail.mutateAsync({
-          accountId: resolvedAccountId,
-          to: to.split(',').map((t) => t.trim()).filter(Boolean),
-          cc: cc ? cc.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
-          bcc: bcc ? bcc.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
-          subject,
-          html,
-          attachmentKeys: attachedFiles.map((f) => f.key),
-          replyToEmailId: replyToEmailId ?? undefined,
-          senderName: resolvedSenderName,
-          senderEmail: resolvedSenderEmail,
-        })
-      }
-      addToast('Email sent', 'success')
+        try {
+          await performSend()
+          addToast('Email sent', 'success')
+          close()
+        } catch (e) {
+          if ((e as Error).message !== 'empty-body') addToast('Failed to send email', 'error')
+          setSending(false)
+        }
+      }, undoSeconds * 1000)
+      return
+    }
+
+    setSending(true)
+    try {
+      await performSend(scheduledAt)
+      addToast(scheduledAt ? 'Email scheduled' : 'Email sent', 'success')
       close()
-    } catch {
-      addToast('Failed to send email', 'error')
+    } catch (e) {
+      if ((e as Error).message !== 'empty-body') addToast('Failed to send email', 'error')
     } finally {
       setSending(false)
     }
@@ -624,6 +688,32 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
                 >
                   🔗
                 </button>
+
+                {/* Signature insert */}
+                {signatures.length > 0 && (
+                  <div style={{ position: 'relative', marginLeft: 'auto' }}>
+                    <select
+                      aria-label="Insert signature"
+                      title="Insert signature"
+                      defaultValue=""
+                      onChange={(e) => {
+                        const sig = signatures.find((s) => s.id === e.target.value)
+                        if (sig) insertSignature(sig.body_html)
+                        e.target.value = ''
+                      }}
+                      style={{
+                        fontSize: 12, padding: '3px 7px', fontFamily: 'inherit',
+                        background: 'var(--bg-elevated)', color: 'var(--text-secondary)',
+                        border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                      }}
+                    >
+                      <option value="" disabled>✍️ Signature</option>
+                      {signatures.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}{s.is_default === 1 ? ' (default)' : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             )}
 
@@ -730,11 +820,50 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
                   />
                 </label>
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button className="btn btn-ghost" style={{ color: 'var(--text-muted)' }} onClick={handleClose}>Discard</button>
+
+                {/* Send Later */}
+                <div style={{ position: 'relative' }}>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => setShowSchedule((s) => !s)}
+                    disabled={sending || !to || !subject}
+                    title="Schedule send"
+                    aria-haspopup="true"
+                    aria-expanded={showSchedule}
+                    style={{ fontSize: 12 }}
+                  >
+                    🕓 Later ▾
+                  </button>
+                  {showSchedule && (
+                    <div style={{
+                      position: 'absolute', bottom: '100%', right: 0, marginBottom: 6, zIndex: 70,
+                      minWidth: 180, background: 'var(--bg-overlay)', border: '1px solid var(--border-hover)',
+                      borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)', padding: 6,
+                    }}>
+                      {schedulePresets.map((p) => (
+                        <button
+                          key={p.label}
+                          onClick={() => { setShowSchedule(false); handleSend(p.getDate().toISOString()) }}
+                          style={{
+                            display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px',
+                            background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                            fontSize: 12, color: 'var(--text-primary)', borderRadius: 'var(--radius-sm)',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--accent-subtle)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <button
                   className="btn btn-primary"
-                  onClick={handleSend}
+                  onClick={() => handleSend()}
                   disabled={sending || !to || !subject}
                   style={{ minWidth: 90, justifyContent: 'center' }}
                 >

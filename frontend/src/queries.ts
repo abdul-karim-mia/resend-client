@@ -386,6 +386,7 @@ export function useSendEmail() {
       attachmentKeys?: string[]
       senderName?: string
       senderEmail?: string
+      scheduledAt?: string
     }) => apiFetch('/send', { method: 'POST', body: JSON.stringify(payload) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['emails'] })
@@ -471,6 +472,53 @@ export function useAssignLabel() {
       qc.invalidateQueries({ queryKey: ['emails'] })
       qc.invalidateQueries({ queryKey: ['labels'] })
     },
+  })
+}
+
+// ── Signatures ────────────────────────────────────────────────
+
+export interface Signature {
+  id: string
+  account_id: string
+  name: string
+  body_html: string
+  is_default: number
+  created_at: string
+  updated_at: string
+}
+
+export function useSignatures(accountId: string | null) {
+  return useQuery({
+    queryKey: ['signatures', accountId],
+    queryFn: () => apiFetch<Signature[]>(`/signatures?accountId=${accountId}`),
+    enabled: !!accountId,
+    staleTime: 30_000,
+  })
+}
+
+export function useCreateSignature(accountId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: { name: string; bodyHtml?: string; isDefault?: boolean }) =>
+      apiFetch<{ id: string }>('/signatures', { method: 'POST', body: JSON.stringify({ accountId, ...payload }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['signatures', accountId] }),
+  })
+}
+
+export function useUpdateSignature(accountId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...patch }: { id: string; name?: string; bodyHtml?: string; isDefault?: boolean }) =>
+      apiFetch(`/signatures/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['signatures', accountId] }),
+  })
+}
+
+export function useDeleteSignature(accountId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/signatures/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['signatures', accountId] }),
   })
 }
 

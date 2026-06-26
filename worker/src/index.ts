@@ -17,8 +17,10 @@ import { settingsRoutes } from './routes/settings'
 import { senderRoutes } from './routes/senders'
 import { preferenceRoutes } from './routes/preferences'
 import { labelRoutes } from './routes/labels'
+import { signatureRoutes } from './routes/signatures'
 import { ensureDbInitialized } from './db'
 import { runMigrations } from './migrations'
+import { dispatchDueEmails } from './scheduler'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -78,6 +80,7 @@ app.route('/api/settings', settingsRoutes)
 app.route('/api/settings/accounts/:id/senders', senderRoutes)
 app.route('/api/preferences', preferenceRoutes)
 app.route('/api/labels', labelRoutes)
+app.route('/api/signatures', signatureRoutes)
 
 // Global error handler
 app.onError((err, c) => {
@@ -97,4 +100,20 @@ app.get('*', async (c) => {
   return res
 })
 
-export default app
+// Export both the HTTP handler (Hono app) and the cron handler. The scheduled
+// handler dispatches due "send later" emails. DB init/migrations are ensured
+// here too, since cron invocations don't pass through the fetch middleware.
+export default {
+  fetch: app.fetch,
+  async scheduled(_event: ScheduledController, env: Bindings, ctx: ExecutionContext) {
+    ctx.waitUntil((async () => {
+      try {
+        await ensureDbInitialized(env.DB)
+        await runMigrations(env.DB)
+        await dispatchDueEmails(env)
+      } catch (err) {
+        console.error('[scheduled] error:', (err as Error).message)
+      }
+    })())
+  },
+}

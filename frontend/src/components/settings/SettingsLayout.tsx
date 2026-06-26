@@ -3,13 +3,15 @@ import SettingsPanel from '../SettingsPanel'
 import AppearanceSettings from './AppearanceSettings'
 import GeneralSettings from './GeneralSettings'
 import NotificationSettings from './NotificationSettings'
+import EmailSettings from './EmailSettings'
 
-type TabId = 'accounts' | 'general' | 'appearance' | 'notifications'
+type TabId = 'accounts' | 'general' | 'appearance' | 'email' | 'notifications'
 
 const TABS: Array<{ id: TabId; label: string; icon: string }> = [
   { id: 'accounts', label: 'Accounts', icon: '👤' },
   { id: 'general', label: 'General', icon: '⚙️' },
   { id: 'appearance', label: 'Appearance', icon: '🎨' },
+  { id: 'email', label: 'Email', icon: '✉️' },
   { id: 'notifications', label: 'Notifications', icon: '🔔' },
 ]
 
@@ -78,6 +80,7 @@ export default function SettingsLayout() {
           <div style={{ maxWidth: 760, margin: '0 auto', padding: '28px 24px 64px' }}>
             {tab === 'general' && <GeneralSettings />}
             {tab === 'appearance' && <AppearanceSettings />}
+            {tab === 'email' && <EmailSettings />}
             {tab === 'notifications' && <NotificationSettings />}
           </div>
         </div>

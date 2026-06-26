@@ -24,6 +24,10 @@
   "ai": {
     "binding": "AI"
   },
+  "triggers": {
+    // Dispatch scheduled ("send later") emails every minute.
+    "crons": ["* * * * *"]
+  },
   "vars": {
     "ENVIRONMENT": "production"
   },
