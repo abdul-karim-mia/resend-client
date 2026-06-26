@@ -5,6 +5,7 @@ import SafeEmailViewer from './SafeEmailViewer'
 import QuickReply from './QuickReply'
 import LabelPicker from './LabelPicker'
 import DeveloperPanel from './DeveloperPanel'
+import AIInsights from './AIInsights'
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleString([], {
@@ -323,6 +324,11 @@ export default function ReadingPane() {
             </button>
           ))}
         </div>
+      )}
+
+      {/* AI insights — summary, action items, priority/category */}
+      {email.direction !== 'outbound' && (
+        <AIInsights emailId={email.id} threadId={email.thread_id} />
       )}
 
       {/* Quick Reply — AI-generated suggestions */}

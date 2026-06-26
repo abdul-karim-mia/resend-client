@@ -709,6 +709,41 @@ export function useQuickReplySuggestions() {
   })
 }
 
+export function useAITranslate() {
+  return useMutation({
+    mutationFn: ({ text, targetLang, accountId }: { text: string; targetLang: string; accountId?: string }) =>
+      apiFetch<{ result: string }>('/ai/translate', { method: 'POST', body: JSON.stringify({ text, targetLang, accountId }) }),
+  })
+}
+
+export function useAIGrammar() {
+  return useMutation({
+    mutationFn: ({ text, accountId }: { text: string; accountId?: string }) =>
+      apiFetch<{ result: string }>('/ai/grammar', { method: 'POST', body: JSON.stringify({ text, accountId }) }),
+  })
+}
+
+export function useAISubject() {
+  return useMutation({
+    mutationFn: ({ body, accountId }: { body: string; accountId?: string }) =>
+      apiFetch<{ subject: string }>('/ai/subject', { method: 'POST', body: JSON.stringify({ body, accountId }) }),
+  })
+}
+
+export function useAIActionItems() {
+  return useMutation({
+    mutationFn: (emailId: string) =>
+      apiFetch<{ items: string[] }>(`/ai/action-items/${emailId}`, { method: 'POST' }),
+  })
+}
+
+export function useAICategorize() {
+  return useMutation({
+    mutationFn: (emailId: string) =>
+      apiFetch<{ priority: string; category: string; reason: string }>(`/ai/categorize/${emailId}`, { method: 'POST' }),
+  })
+}
+
 // ── Auth ──────────────────────────────────────────────────────
 
 export function useAuth() {

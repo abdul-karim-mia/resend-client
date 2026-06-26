@@ -5,6 +5,7 @@ import {
   useSendEmail, useAIAdjustTone, useAIDraftReply, useAICustomPrompt,
   useResendTemplates, useResendTemplate, useAccounts, useAllSenders,
   useEmail, useSaveDraft, useSignatures, usePreferences,
+  useAITranslate, useAIGrammar, useAISubject,
 } from '../queries'
 
 interface ComposerProps {
@@ -19,6 +20,9 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
   const adjustTone = useAIAdjustTone()
   const aiCustomPrompt = useAICustomPrompt()
   const aiDraft = useAIDraftReply()
+  const aiTranslate = useAITranslate()
+  const aiGrammar = useAIGrammar()
+  const aiSubject = useAISubject()
   const saveDraft = useSaveDraft()
 
   // Account + sender selector
@@ -378,6 +382,39 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
     } finally {
       setAiLoading(false)
     }
+  }
+
+  // ── AI — Translate body to a target language ──────────────────────────────
+  const handleTranslate = async (targetLang: string) => {
+    const text = editorRef.current?.innerText ?? ''
+    if (!text.trim()) { addToast('Write something first', 'info'); return }
+    try {
+      setAiLoading(true)
+      const { result } = await aiTranslate.mutateAsync({ text, targetLang, accountId: fromAccountId })
+      if (editorRef.current) editorRef.current.innerHTML = result.replace(/\n/g, '<br>')
+    } catch { addToast('Translation failed', 'error') } finally { setAiLoading(false) }
+  }
+
+  // ── AI — Fix grammar/spelling ─────────────────────────────────────────────
+  const handleGrammar = async () => {
+    const text = editorRef.current?.innerText ?? ''
+    if (!text.trim()) { addToast('Write something first', 'info'); return }
+    try {
+      setAiLoading(true)
+      const { result } = await aiGrammar.mutateAsync({ text, accountId: fromAccountId })
+      if (editorRef.current) editorRef.current.innerHTML = result.replace(/\n/g, '<br>')
+    } catch { addToast('Grammar fix failed', 'error') } finally { setAiLoading(false) }
+  }
+
+  // ── AI — Generate a subject from the body ─────────────────────────────────
+  const handleGenerateSubject = async () => {
+    const text = editorRef.current?.innerText ?? ''
+    if (!text.trim()) { addToast('Write the body first', 'info'); return }
+    try {
+      setAiLoading(true)
+      const { subject: generated } = await aiSubject.mutateAsync({ body: text, accountId: fromAccountId })
+      if (generated) setSubject(generated)
+    } catch { addToast('Subject generation failed', 'error') } finally { setAiLoading(false) }
   }
 
   // ── AI — Generate draft reply (reply mode) ────────────────────────────────
@@ -922,6 +959,38 @@ export default function Composer({ accountId: defaultAccountId, replyToEmailId }
                       {tone === 'formal' ? '🎩' : tone === 'casual' ? '✌' : '⚡'} {tone}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* Writing tools */}
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Writing tools</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <button className="btn btn-ghost" style={{ fontSize: 11, justifyContent: 'flex-start', gap: 6 }} onClick={handleGrammar} disabled={aiLoading}>
+                    ✓ Fix grammar &amp; spelling
+                  </button>
+                  <button className="btn btn-ghost" style={{ fontSize: 11, justifyContent: 'flex-start', gap: 6 }} onClick={handleGenerateSubject} disabled={aiLoading}>
+                    ✨ Generate subject
+                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>🌐</span>
+                    <select
+                      aria-label="Translate to"
+                      defaultValue=""
+                      disabled={aiLoading}
+                      onChange={(e) => { if (e.target.value) { handleTranslate(e.target.value); e.target.value = '' } }}
+                      style={{
+                        flex: 1, fontSize: 11, padding: '5px 6px', fontFamily: 'inherit',
+                        background: 'var(--bg-base)', color: 'var(--text-primary)',
+                        border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                      }}
+                    >
+                      <option value="" disabled>Translate to…</option>
+                      {['English', 'Spanish', 'French', 'German', 'Portuguese', 'Italian', 'Dutch', 'Arabic', 'Hindi', 'Bengali', 'Chinese', 'Japanese'].map((l) => (
+                        <option key={l} value={l}>{l}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
