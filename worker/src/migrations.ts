@@ -10,6 +10,13 @@
 // Keep worker/schema.sql in sync for fresh `db:apply` runs.
 // ============================================================
 
+/** Columns added to the `contacts` table beyond the original base schema. */
+const CONTACT_COLUMN_ADDITIONS: Array<{ name: string; ddl: string }> = [
+  { name: 'notes', ddl: `ALTER TABLE contacts ADD COLUMN notes TEXT` },
+  { name: 'is_favorite', ddl: `ALTER TABLE contacts ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0` },
+  { name: 'contact_count', ddl: `ALTER TABLE contacts ADD COLUMN contact_count INTEGER NOT NULL DEFAULT 0` },
+]
+
 /** Columns added to the `emails` table beyond the original base schema. */
 const EMAIL_COLUMN_ADDITIONS: Array<{ name: string; ddl: string }> = [
   { name: 'is_starred', ddl: `ALTER TABLE emails ADD COLUMN is_starred INTEGER NOT NULL DEFAULT 0` },
@@ -123,6 +130,18 @@ export async function runMigrations(db: D1Database): Promise<void> {
         } catch (err) {
           // Tolerate races / "duplicate column" on concurrent cold starts
           console.warn(`[migrations] add column ${col.name}:`, (err as Error).message)
+        }
+      }
+    }
+
+    // 1b. Add missing columns to `contacts`
+    const contactCols = await getColumns(db, 'contacts')
+    for (const col of CONTACT_COLUMN_ADDITIONS) {
+      if (!contactCols.has(col.name)) {
+        try {
+          await db.prepare(col.ddl).run()
+        } catch (err) {
+          console.warn(`[migrations] add contacts column ${col.name}:`, (err as Error).message)
         }
       }
     }

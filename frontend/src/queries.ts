@@ -411,6 +411,48 @@ export function useSaveDraft() {
   })
 }
 
+// ── Contacts ──────────────────────────────────────────────────
+
+export interface Contact {
+  id: string
+  account_id: string
+  name: string | null
+  email: string
+  last_contacted: string | null
+  notes: string | null
+  is_favorite: number
+  contact_count: number
+}
+
+export function useContacts(accountId: string | null, opts: { q?: string; favorites?: boolean } = {}) {
+  const params = new URLSearchParams({ accountId: accountId ?? '' })
+  if (opts.q) params.set('q', opts.q)
+  if (opts.favorites) params.set('favorites', '1')
+  return useQuery({
+    queryKey: ['contacts', accountId, opts.q ?? '', opts.favorites ?? false],
+    queryFn: () => apiFetch<Contact[]>(`/contacts?${params.toString()}`),
+    enabled: !!accountId,
+    staleTime: 30_000,
+  })
+}
+
+export function useUpdateContact() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...patch }: { id: string; name?: string; notes?: string; isFavorite?: boolean }) =>
+      apiFetch(`/contacts/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['contacts'] }),
+  })
+}
+
+export function useDeleteContact() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/contacts/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['contacts'] }),
+  })
+}
+
 // ── Analytics ─────────────────────────────────────────────────
 
 export interface Analytics {

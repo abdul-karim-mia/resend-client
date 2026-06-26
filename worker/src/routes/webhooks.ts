@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { nanoid } from 'nanoid'
 import { resolveThreadId } from '../lib/threading'
 import { decryptApiKey } from '../lib/crypto'
+import { upsertContact } from '../lib/contacts'
 import { Resend } from 'resend'
 import type { Bindings, Account } from '../types'
 
@@ -78,6 +79,13 @@ webhookRoutes.post('/:accountId/inbound', async (c) => {
   } catch (err) {
     console.error('[webhook] event log error:', (err as Error).message)
   }
+
+  // 5c. Auto-populate contact from the sender
+  await upsertContact(
+    c.env.DB, accountId,
+    extractEmail(emailData.from ?? ''),
+    emailData.from_name ?? extractName(emailData.from ?? ''),
+  )
 
   // 6. Handle attachments
   if (emailData.attachments && Array.isArray(emailData.attachments)) {

@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid'
 import { Resend } from 'resend'
 import { decryptApiKey } from '../lib/crypto'
 import { resolveThreadId } from '../lib/threading'
+import { upsertContact } from '../lib/contacts'
 import type { Bindings, Account } from '../types'
 
 export const sendRoutes = new Hono<{ Bindings: Bindings }>()
@@ -193,6 +194,11 @@ sendRoutes.post('/', async (c) => {
     subject, html ?? null, text ?? null,
     data?.id ?? null
   ).run()
+
+  // Auto-populate contacts from all recipients (fire-and-forget).
+  for (const addr of [...to, ...(cc ?? []), ...(bcc ?? [])]) {
+    await upsertContact(c.env.DB, accountId, addr)
+  }
 
   return c.json({ success: true, data: { id: emailId, resendId: data?.id } })
 })

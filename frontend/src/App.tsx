@@ -10,6 +10,7 @@ import { useApplyTheme } from './theme'
 import LoginPage from './pages/Login'
 import SettingsLayout from './components/settings/SettingsLayout'
 import Dashboard from './components/Dashboard'
+import Contacts from './components/Contacts'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -54,12 +55,13 @@ function AppShell() {
   const path = window.location.pathname
   const isSettingsView = path === '/settings'
   const isAnalyticsView = path === '/analytics'
+  const isContactsView = path === '/contacts'
 
   return (
     <>
       <div className="app-shell">
         <Sidebar />
-        {isSettingsView ? <SettingsLayout /> : isAnalyticsView ? <Dashboard /> : (
+        {isSettingsView ? <SettingsLayout /> : isAnalyticsView ? <Dashboard /> : isContactsView ? <Contacts /> : (
           <>
             <EmailList />
             <ReadingPane />
