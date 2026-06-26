@@ -16,15 +16,17 @@ import { resendTemplateRoutes } from './routes/resend-templates'
 import { settingsRoutes } from './routes/settings'
 import { senderRoutes } from './routes/senders'
 import { ensureDbInitialized } from './db'
+import { runMigrations } from './migrations'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
 let dbChecked = false
 
-// Auto-initialize DB on first request
+// Auto-initialize DB on first request, then apply additive migrations.
 app.use('*', async (c, next) => {
   if (!dbChecked && c.env.DB) {
     await ensureDbInitialized(c.env.DB)
+    await runMigrations(c.env.DB)
     dbChecked = true
   }
   await next()

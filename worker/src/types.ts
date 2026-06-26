@@ -40,13 +40,17 @@ export type AccountSender = {
   created_at: string
 }
 
+export type Folder =
+  | 'inbox' | 'sent' | 'drafts' | 'trash' | 'archive'
+  | 'spam' | 'starred' | 'scheduled'
+
 export type Email = {
   id: string
   account_id: string
   thread_id: string
   message_id: string | null
   in_reply_to: string | null
-  folder: 'inbox' | 'sent' | 'drafts' | 'trash' | 'archive'
+  folder: Folder
   direction: 'inbound' | 'outbound'
   sender_name: string | null
   sender_email: string
@@ -60,6 +64,61 @@ export type Email = {
   delivery_status: 'pending' | 'sent' | 'delivered' | 'opened' | 'bounced' | 'failed'
   resend_email_id: string | null
   created_at: string
+  // ── Added via migrations (all backward-compatible) ──
+  is_starred?: number
+  is_pinned?: number
+  snoozed_until?: string | null
+  scheduled_at?: string | null
+  reply_to?: string | null
+  raw_headers?: string | null
+}
+
+export type Label = {
+  id: string
+  account_id: string
+  name: string
+  color: string
+  created_at: string
+}
+
+export type Signature = {
+  id: string
+  account_id: string
+  name: string
+  body_html: string
+  is_default: number
+  created_at: string
+  updated_at: string
+}
+
+export type EmailEvent = {
+  id: string
+  account_id: string
+  email_id: string | null
+  resend_email_id: string | null
+  type: string
+  payload: string | null
+  created_at: string
+}
+
+export type AuditLog = {
+  id: string
+  action: string
+  detail: string | null
+  actor: string | null
+  ip: string | null
+  user_agent: string | null
+  created_at: string
+}
+
+export type Session = {
+  id: string
+  username: string
+  ip: string | null
+  user_agent: string | null
+  created_at: string
+  last_seen: string
+  revoked: number
 }
 
 export type Attachment = {
