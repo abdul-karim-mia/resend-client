@@ -258,10 +258,12 @@ export function useEmails(
   })
 }
 
+export interface EmailLabelRef { id: string; name: string; color: string }
+
 export function useEmail(emailId: string | null) {
   return useQuery({
     queryKey: ['email', emailId],
-    queryFn: () => apiFetch<Email & { attachments: Attachment[] }>(`/emails/${emailId}`),
+    queryFn: () => apiFetch<Email & { attachments: Attachment[]; labels: EmailLabelRef[] }>(`/emails/${emailId}`),
     enabled: !!emailId,
     staleTime: 60_000,
   })
@@ -404,6 +406,70 @@ export function useSaveDraft() {
     }) => apiFetch<{ id: string }>('/send/draft', { method: 'POST', body: JSON.stringify(payload) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['emails'] })
+    },
+  })
+}
+
+// ── Labels ────────────────────────────────────────────────────
+
+export interface Label {
+  id: string
+  account_id: string
+  name: string
+  color: string
+  created_at: string
+  email_count?: number
+}
+
+export function useLabels(accountId: string | null) {
+  return useQuery({
+    queryKey: ['labels', accountId],
+    queryFn: () => apiFetch<Label[]>(`/labels?accountId=${accountId}`),
+    enabled: !!accountId,
+    staleTime: 30_000,
+  })
+}
+
+export function useCreateLabel(accountId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: { name: string; color?: string }) =>
+      apiFetch<Label>('/labels', { method: 'POST', body: JSON.stringify({ accountId, ...payload }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['labels', accountId] }),
+  })
+}
+
+export function useUpdateLabel(accountId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...patch }: { id: string; name?: string; color?: string }) =>
+      apiFetch(`/labels/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['labels', accountId] }),
+  })
+}
+
+export function useDeleteLabel(accountId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/labels/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['labels', accountId] })
+      qc.invalidateQueries({ queryKey: ['emails'] })
+    },
+  })
+}
+
+export function useAssignLabel() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ labelId, emailId, assign }: { labelId: string; emailId: string; assign: boolean }) =>
+      apiFetch(`/labels/${labelId}/${assign ? 'assign' : 'unassign'}`, {
+        method: 'POST', body: JSON.stringify({ emailId }),
+      }),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ['email', vars.emailId] })
+      qc.invalidateQueries({ queryKey: ['emails'] })
+      qc.invalidateQueries({ queryKey: ['labels'] })
     },
   })
 }

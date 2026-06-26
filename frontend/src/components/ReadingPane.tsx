@@ -2,6 +2,7 @@ import { useAppStore } from '../store'
 import { useEmail, useMoveFolder, useMarkRead, useToggleStar, useTogglePin } from '../queries'
 import SafeEmailViewer from './SafeEmailViewer'
 import QuickReply from './QuickReply'
+import LabelPicker from './LabelPicker'
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleString([], {
@@ -238,7 +239,23 @@ export default function ReadingPane() {
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{bccRecipients}</span>
                 </div>
               )}
+              {email.reply_to && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.7, minWidth: 16 }}>Reply-To:</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email.reply_to}</span>
+                </div>
+              )}
             </div>
+            {/* Labels */}
+            {selectedAccountId && (
+              <div style={{ marginTop: 10 }}>
+                <LabelPicker
+                  accountId={selectedAccountId}
+                  emailId={email.id}
+                  current={email.labels ?? []}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>

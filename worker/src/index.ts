@@ -16,6 +16,7 @@ import { resendTemplateRoutes } from './routes/resend-templates'
 import { settingsRoutes } from './routes/settings'
 import { senderRoutes } from './routes/senders'
 import { preferenceRoutes } from './routes/preferences'
+import { labelRoutes } from './routes/labels'
 import { ensureDbInitialized } from './db'
 import { runMigrations } from './migrations'
 
@@ -76,6 +77,7 @@ app.route('/api/templates/resend', resendTemplateRoutes)
 app.route('/api/settings', settingsRoutes)
 app.route('/api/settings/accounts/:id/senders', senderRoutes)
 app.route('/api/preferences', preferenceRoutes)
+app.route('/api/labels', labelRoutes)
 
 // Global error handler
 app.onError((err, c) => {
