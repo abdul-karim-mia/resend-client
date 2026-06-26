@@ -4,10 +4,15 @@ import EmailList from './components/EmailList'
 import ReadingPane from './components/ReadingPane'
 import Composer from './components/Composer'
 import { ShortcutsOverlay, useKeyboardShortcuts } from './components/Shortcuts'
+import CommandPalette from './components/CommandPalette'
 import { useAppStore } from './store'
 import { useAuth } from './queries'
+import { useApplyTheme } from './theme'
+import { useNotifications } from './notifications'
 import LoginPage from './pages/Login'
-import SettingsPanel from './components/SettingsPanel'
+import SettingsLayout from './components/settings/SettingsLayout'
+import Dashboard from './components/Dashboard'
+import Contacts from './components/Contacts'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -21,6 +26,8 @@ const queryClient = new QueryClient({
 
 function AppShell() {
   useKeyboardShortcuts()
+  useApplyTheme()
+  useNotifications()
   const composerOpen = useAppStore((s) => s.composerOpen)
   const composerReplyToId = useAppStore((s) => s.composerReplyToId)
   const selectedAccountId = useAppStore((s) => s.selectedAccountId)
@@ -48,13 +55,16 @@ function AppShell() {
     return <LoginPage />
   }
 
-  const isSettingsView = window.location.pathname === '/settings'
+  const path = window.location.pathname
+  const isSettingsView = path === '/settings'
+  const isAnalyticsView = path === '/analytics'
+  const isContactsView = path === '/contacts'
 
   return (
     <>
       <div className="app-shell">
         <Sidebar />
-        {isSettingsView ? <SettingsPanel /> : (
+        {isSettingsView ? <SettingsLayout /> : isAnalyticsView ? <Dashboard /> : isContactsView ? <Contacts /> : (
           <>
             <EmailList />
             <ReadingPane />
@@ -69,6 +79,9 @@ function AppShell() {
           replyToEmailId={composerReplyToId}
         />
       )}
+
+      {/* Command palette (⌘K) */}
+      <CommandPalette />
 
       {/* Shortcuts overlay */}
       <ShortcutsOverlay />

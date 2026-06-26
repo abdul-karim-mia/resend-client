@@ -1,7 +1,11 @@
+import { useState } from 'react'
 import { useAppStore } from '../store'
-import { useEmail, useMoveFolder, useMarkRead } from '../queries'
+import { useEmail, useMoveFolder, useMarkRead, useToggleStar, useTogglePin } from '../queries'
 import SafeEmailViewer from './SafeEmailViewer'
 import QuickReply from './QuickReply'
+import LabelPicker from './LabelPicker'
+import DeveloperPanel from './DeveloperPanel'
+import AIInsights from './AIInsights'
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleString([], {
@@ -24,6 +28,9 @@ export default function ReadingPane() {
   const selectedAccountId = useAppStore((s) => s.selectedAccountId)
   const moveFolder = useMoveFolder()
   const markRead = useMarkRead()
+  const toggleStar = useToggleStar()
+  const togglePin = useTogglePin()
+  const [showDev, setShowDev] = useState(false)
 
   const { data: email, isLoading } = useEmail(emailId)
 
@@ -112,7 +119,7 @@ export default function ReadingPane() {
   }
 
   return (
-    <div className="reading-pane">
+    <div className="reading-pane active">
       {/* Action bar */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 4,
@@ -121,6 +128,14 @@ export default function ReadingPane() {
         background: 'var(--bg-surface)',
         flexWrap: 'wrap',
       }}>
+        <button
+          className="mobile-back-btn btn btn-ghost"
+          onClick={() => useAppStore.getState().setEmail(null)}
+          aria-label="Back to list"
+          style={{ display: 'none', fontSize: 14, padding: '6px 9px' }}
+        >
+          ←
+        </button>
         <button id="action-reply" className="btn btn-ghost" style={{ fontSize: 12, gap: 6 }} onClick={() => openComposer(email.id)}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
           Reply
@@ -144,6 +159,25 @@ export default function ReadingPane() {
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
           Trash
         </button>
+        <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 4px' }} />
+        <button
+          id="action-star"
+          className="btn btn-ghost"
+          style={{ fontSize: 12, gap: 6, color: email.is_starred === 1 ? 'var(--warning)' : undefined }}
+          onClick={() => toggleStar.mutate({ emailId: email.id, starred: email.is_starred !== 1 })}
+          title={email.is_starred === 1 ? 'Unstar' : 'Star'}
+        >
+          {email.is_starred === 1 ? '⭐' : '☆'} {email.is_starred === 1 ? 'Starred' : 'Star'}
+        </button>
+        <button
+          id="action-pin"
+          className="btn btn-ghost"
+          style={{ fontSize: 12, gap: 6, color: email.is_pinned === 1 ? 'var(--accent-light)' : undefined }}
+          onClick={() => togglePin.mutate({ emailId: email.id, pinned: email.is_pinned !== 1 })}
+          title={email.is_pinned === 1 ? 'Unpin' : 'Pin to top'}
+        >
+          📌 {email.is_pinned === 1 ? 'Pinned' : 'Pin'}
+        </button>
         <button
           id="action-read-toggle"
           className="btn btn-ghost"
@@ -152,6 +186,16 @@ export default function ReadingPane() {
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill={email.read_status === 1 ? 'none' : 'currentColor'} stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="6"/></svg>
           {email.read_status === 1 ? 'Mark unread' : 'Mark read'}
+        </button>
+        <button
+          id="action-developer"
+          className="btn btn-ghost"
+          style={{ fontSize: 12, gap: 6, fontFamily: 'JetBrains Mono, monospace', color: showDev ? 'var(--accent-light)' : undefined }}
+          onClick={() => setShowDev((s) => !s)}
+          title="Developer tools: timeline, headers, source, debugger"
+          aria-pressed={showDev}
+        >
+          {'</>'} Dev
         </button>
       </div>
 
@@ -217,7 +261,23 @@ export default function ReadingPane() {
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{bccRecipients}</span>
                 </div>
               )}
+              {email.reply_to && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.7, minWidth: 16 }}>Reply-To:</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email.reply_to}</span>
+                </div>
+              )}
             </div>
+            {/* Labels */}
+            {selectedAccountId && (
+              <div style={{ marginTop: 10 }}>
+                <LabelPicker
+                  accountId={selectedAccountId}
+                  emailId={email.id}
+                  current={email.labels ?? []}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -238,6 +298,9 @@ export default function ReadingPane() {
           </div>
         )}
       </div>
+
+      {/* Developer tools drawer */}
+      {showDev && <DeveloperPanel email={email} />}
 
       {/* Attachments */}
       {email.attachments && email.attachments.length > 0 && (
@@ -269,6 +332,11 @@ export default function ReadingPane() {
             </button>
           ))}
         </div>
+      )}
+
+      {/* AI insights — summary, action items, priority/category */}
+      {email.direction !== 'outbound' && (
+        <AIInsights emailId={email.id} threadId={email.thread_id} />
       )}
 
       {/* Quick Reply — AI-generated suggestions */}

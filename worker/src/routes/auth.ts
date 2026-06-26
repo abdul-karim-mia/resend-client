@@ -2,21 +2,26 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import { sign } from 'hono/jwt'
+import { nanoid } from 'nanoid'
 import type { Bindings } from '../types'
+import { verifyTotp } from '../lib/totp'
+import { audit, getSecure } from '../lib/audit'
 
 export const authRoutes = new Hono<{ Bindings: Bindings }>()
 
 const loginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
+  totpCode: z.string().optional(),
 })
 
 // POST /api/auth/login
 authRoutes.post('/login', zValidator('json', loginSchema), async (c) => {
-  const { username, password } = c.req.valid('json')
+  const { username, password, totpCode } = c.req.valid('json')
 
   // Verify username
   if (username !== c.env.ADMIN_USERNAME) {
+    await audit(c.env, 'auth.login_failed', `unknown user: ${username}`, c.req.raw, username)
     return c.json({ success: false, error: 'Invalid credentials' }, 401)
   }
 
@@ -24,8 +29,34 @@ authRoutes.post('/login', zValidator('json', loginSchema), async (c) => {
   // We use a timing-safe comparison for the hash check
   const isValid = await verifyPassword(password, c.env.ADMIN_PASSWORD_HASH)
   if (!isValid) {
+    await audit(c.env, 'auth.login_failed', 'bad password', c.req.raw, username)
     return c.json({ success: false, error: 'Invalid credentials' }, 401)
   }
+
+  // Second factor (optional, opt-in). If enabled, a valid TOTP code is required.
+  const totpEnabled = (await getSecure(c.env, 'totp_enabled')) as unknown === true
+  if (totpEnabled) {
+    if (!totpCode) {
+      return c.json({ success: false, error: 'Two-factor code required', requiresTotp: true }, 401)
+    }
+    const secret = await getSecure(c.env, 'totp_secret')
+    if (!secret || !(await verifyTotp(secret, totpCode))) {
+      await audit(c.env, 'auth.2fa_failed', 'bad TOTP code', c.req.raw, username)
+      return c.json({ success: false, error: 'Invalid two-factor code', requiresTotp: true }, 401)
+    }
+  }
+
+  // Record the session (login history) + audit.
+  try {
+    await c.env.DB.prepare(`
+      INSERT INTO sessions (id, username, ip, user_agent) VALUES (?, ?, ?, ?)
+    `).bind(
+      nanoid(), username,
+      c.req.raw.headers.get('cf-connecting-ip') ?? c.req.raw.headers.get('x-forwarded-for') ?? null,
+      c.req.raw.headers.get('user-agent') ?? null,
+    ).run()
+  } catch { /* sessions table optional */ }
+  await audit(c.env, 'auth.login', '2fa: ' + (totpEnabled ? 'yes' : 'no'), c.req.raw, username)
 
   // Sign JWT (24h expiry)
   const token = await sign(

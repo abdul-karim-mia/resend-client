@@ -265,3 +265,109 @@ aiRoutes.post('/custom-prompt', async (c) => {
 
   return c.json({ success: true, data: { result: output } })
 })
+
+// Shared one-shot completion helper for the lightweight AI utilities below.
+async function complete(
+  env: Bindings,
+  accountId: string | undefined | null,
+  system: string,
+  user: string,
+  opts: { maxTokens?: number; temperature?: number } = {},
+): Promise<string> {
+  const model = await resolveModel(env.DB, accountId)
+  const result = await (env.AI as Ai).run(model, {
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+    max_tokens: opts.maxTokens ?? 600,
+    temperature: opts.temperature ?? 0.4,
+  } as Parameters<Ai['run']>[1])
+  return stripThinkTags((result as { response?: string }).response ?? '')
+}
+
+// POST /api/ai/translate — translate body text to a target language
+aiRoutes.post('/translate', async (c) => {
+  const { text, targetLang, accountId } = await c.req.json<{ text: string; targetLang: string; accountId?: string }>()
+  if (!text?.trim() || !targetLang) return c.json({ success: false, error: 'text and targetLang required' }, 400)
+  const out = await complete(
+    c.env, accountId,
+    `You are a professional translator. Translate the user's email into ${targetLang}. Preserve meaning, tone, and any formatting. Return ONLY the translation — no notes.`,
+    text.slice(0, 4000),
+    { temperature: 0.3 },
+  )
+  return c.json({ success: true, data: { result: out } })
+})
+
+// POST /api/ai/grammar — fix spelling/grammar without changing meaning
+aiRoutes.post('/grammar', async (c) => {
+  const { text, accountId } = await c.req.json<{ text: string; accountId?: string }>()
+  if (!text?.trim()) return c.json({ success: false, error: 'text required' }, 400)
+  const out = await complete(
+    c.env, accountId,
+    `You are a meticulous proofreader. Correct spelling, grammar, and punctuation in the user's email. Do NOT change meaning, tone, or formatting. Return ONLY the corrected text.`,
+    text.slice(0, 4000),
+    { temperature: 0.2 },
+  )
+  return c.json({ success: true, data: { result: out } })
+})
+
+// POST /api/ai/subject — generate a concise subject line from the body
+aiRoutes.post('/subject', async (c) => {
+  const { body, accountId } = await c.req.json<{ body: string; accountId?: string }>()
+  if (!body?.trim()) return c.json({ success: false, error: 'body required' }, 400)
+  const out = await complete(
+    c.env, accountId,
+    `Generate a single, clear, specific email subject line (max 70 characters) for the email body. Return ONLY the subject text — no quotes, no "Subject:" prefix.`,
+    body.slice(0, 3000),
+    { maxTokens: 40, temperature: 0.5 },
+  )
+  const firstLine = out.replace(/^["']|["']$/g, '').split('\n')[0] ?? out
+  return c.json({ success: true, data: { subject: firstLine.slice(0, 120) } })
+})
+
+// POST /api/ai/action-items/:emailId — extract action items from a thread
+aiRoutes.post('/action-items/:emailId', async (c) => {
+  const emailId = c.req.param('emailId')
+  const row = await c.env.DB.prepare(`
+    SELECT e.body_text, e.account_id FROM emails e WHERE e.id = ?
+  `).bind(emailId).first<{ body_text: string | null; account_id: string }>()
+  if (!row) return c.json({ success: false, error: 'Email not found' }, 404)
+
+  const out = await complete(
+    c.env, row.account_id,
+    `Extract concrete action items / to-dos from the email. Return ONLY a JSON array of short strings (max 8). If there are none, return []. No markdown, no prose.`,
+    (row.body_text ?? '').slice(0, 4000),
+    { maxTokens: 300, temperature: 0.2 },
+  )
+  return c.json({ success: true, data: { items: extractJsonArray(out) } })
+})
+
+// POST /api/ai/categorize/:emailId — classify priority + category
+aiRoutes.post('/categorize/:emailId', async (c) => {
+  const emailId = c.req.param('emailId')
+  const row = await c.env.DB.prepare(`
+    SELECT e.subject, e.body_text, e.account_id FROM emails e WHERE e.id = ?
+  `).bind(emailId).first<{ subject: string | null; body_text: string | null; account_id: string }>()
+  if (!row) return c.json({ success: false, error: 'Email not found' }, 404)
+
+  const out = await complete(
+    c.env, row.account_id,
+    `Classify the email. Return ONLY compact JSON: {"priority":"high|normal|low","category":"one of: sales, support, billing, personal, marketing, notification, other","reason":"<8 words"}. No markdown.`,
+    `Subject: ${row.subject ?? ''}\n\n${(row.body_text ?? '').slice(0, 3000)}`,
+    { maxTokens: 120, temperature: 0.2 },
+  )
+  let parsed: { priority?: string; category?: string; reason?: string } = {}
+  try {
+    const m = out.match(/\{[\s\S]*\}/)
+    if (m) parsed = JSON.parse(m[0])
+  } catch { /* fall through to defaults */ }
+  return c.json({
+    success: true,
+    data: {
+      priority: parsed.priority ?? 'normal',
+      category: parsed.category ?? 'other',
+      reason: parsed.reason ?? '',
+    },
+  })
+})

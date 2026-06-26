@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid'
 import { Resend } from 'resend'
 import { decryptApiKey } from '../lib/crypto'
 import { resolveThreadId } from '../lib/threading'
+import { upsertContact } from '../lib/contacts'
 import type { Bindings, Account } from '../types'
 
 export const sendRoutes = new Hono<{ Bindings: Bindings }>()
@@ -23,16 +24,53 @@ sendRoutes.post('/', async (c) => {
     attachmentKeys?: string[]
     senderName?: string    // selected sender identity name
     senderEmail?: string   // selected sender identity email
+    scheduledAt?: string   // ISO timestamp — if future, queue instead of send
   }>()
 
   const {
     accountId, to, cc, bcc, subject, html, text,
     replyToEmailId, attachmentKeys, templateId, templateVariables,
-    senderName, senderEmail,
+    senderName, senderEmail, scheduledAt,
   } = body
 
   if (!accountId || !to?.length || !subject) {
     return c.json({ success: false, error: 'accountId, to, and subject are required' }, 400)
+  }
+
+  // ── Scheduled send ──────────────────────────────────────────────────────────
+  // If scheduledAt is in the future, persist the email in the "scheduled" folder
+  // and let the cron dispatcher send it when due. Returns immediately.
+  if (scheduledAt) {
+    const when = Date.parse(scheduledAt)
+    if (!Number.isNaN(when) && when > Date.now() + 5_000) {
+      const acct = await c.env.DB.prepare(`SELECT domain, from_name, from_email FROM accounts WHERE id = ?`)
+        .bind(accountId).first<{ domain: string; from_name: string; from_email: string | null }>()
+      if (!acct) return c.json({ success: false, error: 'Account not found' }, 404)
+
+      const fromAddr = senderEmail ?? acct.from_email ?? `noreply@${acct.domain}`
+      const fromNm = senderName ?? acct.from_name
+      const scheduledId = nanoid()
+      await c.env.DB.prepare(`
+        INSERT INTO emails (
+          id, account_id, thread_id, message_id, in_reply_to,
+          folder, direction, sender_name, sender_email,
+          recipient_to, recipient_cc, recipient_bcc,
+          subject, body_html, body_text,
+          read_status, delivery_status, scheduled_at
+        ) VALUES (?, ?, ?, NULL, ?, 'scheduled', 'outbound', ?, ?, ?, ?, ?, ?, ?, ?, 1, 'pending', ?)
+      `).bind(
+        scheduledId, accountId, crypto.randomUUID(),
+        replyToEmailId ?? null,
+        fromNm, fromAddr,
+        JSON.stringify(to),
+        cc?.length ? JSON.stringify(cc) : null,
+        bcc?.length ? JSON.stringify(bcc) : null,
+        subject, html ?? null, text ?? null,
+        new Date(when).toISOString(),
+      ).run()
+
+      return c.json({ success: true, data: { id: scheduledId, scheduled: true, scheduledAt: new Date(when).toISOString() } })
+    }
   }
 
   // Load account
@@ -156,6 +194,11 @@ sendRoutes.post('/', async (c) => {
     subject, html ?? null, text ?? null,
     data?.id ?? null
   ).run()
+
+  // Auto-populate contacts from all recipients (fire-and-forget).
+  for (const addr of [...to, ...(cc ?? []), ...(bcc ?? [])]) {
+    await upsertContact(c.env.DB, accountId, addr)
+  }
 
   return c.json({ success: true, data: { id: emailId, resendId: data?.id } })
 })

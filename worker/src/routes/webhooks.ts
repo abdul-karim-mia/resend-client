@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { nanoid } from 'nanoid'
 import { resolveThreadId } from '../lib/threading'
 import { decryptApiKey } from '../lib/crypto'
+import { upsertContact } from '../lib/contacts'
 import { Resend } from 'resend'
 import type { Bindings, Account } from '../types'
 
@@ -65,6 +66,27 @@ webhookRoutes.post('/:accountId/inbound', async (c) => {
     bodyHtml, bodyText
   ).run()
 
+  // 5b. Persist raw headers (developer tooling) + log a timeline/inspector event
+  try {
+    if (emailData.headers) {
+      await c.env.DB.prepare(`UPDATE emails SET raw_headers = ? WHERE id = ?`)
+        .bind(JSON.stringify(emailData.headers), emailId).run()
+    }
+    await c.env.DB.prepare(`
+      INSERT INTO email_events (id, account_id, email_id, resend_email_id, type, payload)
+      VALUES (?, ?, ?, ?, 'email.received', ?)
+    `).bind(nanoid(), accountId, emailId, emailData.message_id ?? null, rawBody.slice(0, 16000)).run()
+  } catch (err) {
+    console.error('[webhook] event log error:', (err as Error).message)
+  }
+
+  // 5c. Auto-populate contact from the sender
+  await upsertContact(
+    c.env.DB, accountId,
+    extractEmail(emailData.from ?? ''),
+    emailData.from_name ?? extractName(emailData.from ?? ''),
+  )
+
   // 6. Handle attachments
   if (emailData.attachments && Array.isArray(emailData.attachments)) {
     await processAttachments(c.env, accountId, emailId, emailData.attachments, account)
@@ -107,8 +129,23 @@ webhookRoutes.post('/:accountId/events', async (c) => {
     'email.clicked':          'opened',
   }
 
+  // Resolve the local email id (if any) for timeline attribution.
+  const local = await c.env.DB.prepare(
+    `SELECT id FROM emails WHERE resend_email_id = ? AND account_id = ?`
+  ).bind(payload.data.email_id, accountId).first<{ id: string }>()
+
+  // Always record the raw event for the timeline + webhook inspector,
+  // even for event types we don't map to a delivery status.
+  await c.env.DB.prepare(`
+    INSERT INTO email_events (id, account_id, email_id, resend_email_id, type, payload)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).bind(
+    nanoid(), accountId, local?.id ?? null, payload.data.email_id,
+    payload.type, rawBody.slice(0, 16000),
+  ).run()
+
   const newStatus = statusMap[payload.type]
-  if (!newStatus) return c.json({ success: true }) // Ignore unknown events
+  if (!newStatus) return c.json({ success: true }) // Status unchanged for unknown events
 
   await c.env.DB.prepare(
     `UPDATE emails SET delivery_status = ? WHERE resend_email_id = ? AND account_id = ?`

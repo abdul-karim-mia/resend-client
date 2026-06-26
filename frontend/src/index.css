@@ -75,6 +75,38 @@
   --email-list-w:   340px;
 }
 
+/* ── Light theme overrides ─────────────────────────────────────
+   Applied when <html data-theme="light">. The "system" setting maps
+   to either data-theme="light" or "dark" at runtime (see useTheme). */
+[data-theme="light"] {
+  --bg-base:        #f7f8fa;
+  --bg-surface:     #ffffff;
+  --bg-elevated:    #f1f3f7;
+  --bg-overlay:     #e9ecf3;
+  --bg-hover:       #e2e6ef;
+
+  --accent:         #5457e6;
+  --accent-light:   #4f46e5;
+  --accent-glow:    rgba(99, 102, 241, 0.18);
+  --accent-subtle:  rgba(99, 102, 241, 0.08);
+
+  --text-primary:   #0f172a;
+  --text-secondary: #475569;
+  --text-muted:     #94a3b8;
+  --text-disabled:  #cbd5e1;
+
+  --border:         rgba(15, 23, 42, 0.08);
+  --border-hover:   rgba(15, 23, 42, 0.16);
+  --border-accent:  rgba(99, 102, 241, 0.4);
+
+  --glass-bg:       rgba(255, 255, 255, 0.7);
+
+  --shadow-sm:      0 1px 3px rgba(15,23,42,0.08), 0 1px 2px rgba(15,23,42,0.04);
+  --shadow-md:      0 4px 16px rgba(15,23,42,0.10), 0 2px 4px rgba(15,23,42,0.06);
+  --shadow-lg:      0 20px 40px rgba(15,23,42,0.14), 0 4px 8px rgba(15,23,42,0.08);
+  --shadow-glow:    0 0 24px rgba(99,102,241,0.2);
+}
+
 /* ── Reset ─────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -411,11 +443,19 @@ code, pre { font-family: 'JetBrains Mono', monospace; }
 
 /* ── Responsive: mobile single-panel ───────────────────────── */
 @media (max-width: 768px) {
-  .sidebar { position: fixed; left: -220px; top: 0; height: 100vh; z-index: 100; transition: left var(--duration-base) var(--ease-out); }
+  .sidebar { position: fixed; left: -240px; top: 0; height: 100dvh; z-index: 100; transition: left var(--duration-base) var(--ease-out); box-shadow: var(--shadow-lg); }
   .sidebar.open { left: 0; }
   .email-list { width: 100%; }
   .reading-pane { display: none; }
   .reading-pane.active { display: flex; position: fixed; inset: 0; z-index: 50; }
+  /* Reveal mobile-only controls */
+  .mobile-menu-btn { display: inline-flex !important; align-items: center; justify-content: center; }
+  .mobile-back-btn { display: inline-flex !important; align-items: center; justify-content: center; }
+}
+
+@media (min-width: 769px) {
+  /* The backdrop is only meaningful on mobile */
+  .sidebar-backdrop { display: none; }
 }
 
 /* ── Accessibility ──────────────────────────────────────────── */

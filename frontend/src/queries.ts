@@ -54,6 +54,13 @@ export interface Email {
   delivery_status: string
   created_at: string
   attachment_count?: number
+  label_count?: number
+  is_starred?: number
+  is_pinned?: number
+  snoozed_until?: string | null
+  scheduled_at?: string | null
+  reply_to?: string | null
+  raw_headers?: string | null
 }
 
 export interface Attachment {
@@ -251,10 +258,12 @@ export function useEmails(
   })
 }
 
+export interface EmailLabelRef { id: string; name: string; color: string }
+
 export function useEmail(emailId: string | null) {
   return useQuery({
     queryKey: ['email', emailId],
-    queryFn: () => apiFetch<Email & { attachments: Attachment[] }>(`/emails/${emailId}`),
+    queryFn: () => apiFetch<Email & { attachments: Attachment[]; labels: EmailLabelRef[] }>(`/emails/${emailId}`),
     enabled: !!emailId,
     staleTime: 60_000,
   })
@@ -322,6 +331,44 @@ export function useDeleteEmail() {
   })
 }
 
+export function useToggleStar() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ emailId, starred }: { emailId: string; starred: boolean }) =>
+      apiFetch(`/emails/${emailId}/star`, { method: 'PUT', body: JSON.stringify({ starred }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['emails'] })
+      qc.invalidateQueries({ queryKey: ['unread-counts'] })
+    },
+  })
+}
+
+export function useTogglePin() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ emailId, pinned }: { emailId: string; pinned: boolean }) =>
+      apiFetch(`/emails/${emailId}/pin`, { method: 'PUT', body: JSON.stringify({ pinned }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['emails'] })
+    },
+  })
+}
+
+export function useBulkAction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: {
+      ids: string[]
+      action: 'read' | 'unread' | 'folder' | 'star' | 'unstar' | 'delete'
+      value?: string
+    }) => apiFetch<{ affected: number }>('/emails/bulk', { method: 'POST', body: JSON.stringify(payload) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['emails'] })
+      qc.invalidateQueries({ queryKey: ['unread-counts'] })
+    },
+  })
+}
+
 export function useSendEmail() {
   const qc = useQueryClient()
   return useMutation({
@@ -339,6 +386,7 @@ export function useSendEmail() {
       attachmentKeys?: string[]
       senderName?: string
       senderEmail?: string
+      scheduledAt?: string
     }) => apiFetch('/send', { method: 'POST', body: JSON.stringify(payload) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['emails'] })
@@ -359,6 +407,332 @@ export function useSaveDraft() {
     }) => apiFetch<{ id: string }>('/send/draft', { method: 'POST', body: JSON.stringify(payload) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['emails'] })
+    },
+  })
+}
+
+// ── Security ──────────────────────────────────────────────────
+
+export interface SessionRow {
+  id: string; username: string; ip: string | null; user_agent: string | null
+  created_at: string; last_seen: string; revoked: number
+}
+export interface AuditRow {
+  id: string; action: string; detail: string | null; actor: string | null
+  ip: string | null; user_agent: string | null; created_at: string
+}
+
+export function useSecurityStatus() {
+  return useQuery({
+    queryKey: ['security-status'],
+    queryFn: () => apiFetch<{ totpEnabled: boolean }>('/security/status'),
+    staleTime: 30_000,
+  })
+}
+
+export function useTotpInit() {
+  return useMutation({
+    mutationFn: () => apiFetch<{ secret: string; uri: string }>('/security/totp/init', { method: 'POST' }),
+  })
+}
+
+export function useTotpEnable() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (code: string) => apiFetch<{ totpEnabled: boolean }>('/security/totp/enable', { method: 'POST', body: JSON.stringify({ code }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['security-status'] }),
+  })
+}
+
+export function useTotpDisable() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (code: string) => apiFetch<{ totpEnabled: boolean }>('/security/totp/disable', { method: 'POST', body: JSON.stringify({ code }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['security-status'] }),
+  })
+}
+
+export function useSessions() {
+  return useQuery({ queryKey: ['sessions'], queryFn: () => apiFetch<SessionRow[]>('/security/sessions'), staleTime: 30_000 })
+}
+
+export function useAuditLog() {
+  return useQuery({ queryKey: ['audit'], queryFn: () => apiFetch<AuditRow[]>('/security/audit'), staleTime: 30_000 })
+}
+
+// ── Contacts ──────────────────────────────────────────────────
+
+export interface Contact {
+  id: string
+  account_id: string
+  name: string | null
+  email: string
+  last_contacted: string | null
+  notes: string | null
+  is_favorite: number
+  contact_count: number
+}
+
+export function useContacts(accountId: string | null, opts: { q?: string; favorites?: boolean } = {}) {
+  const params = new URLSearchParams({ accountId: accountId ?? '' })
+  if (opts.q) params.set('q', opts.q)
+  if (opts.favorites) params.set('favorites', '1')
+  return useQuery({
+    queryKey: ['contacts', accountId, opts.q ?? '', opts.favorites ?? false],
+    queryFn: () => apiFetch<Contact[]>(`/contacts?${params.toString()}`),
+    enabled: !!accountId,
+    staleTime: 30_000,
+  })
+}
+
+export function useUpdateContact() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...patch }: { id: string; name?: string; notes?: string; isFavorite?: boolean }) =>
+      apiFetch(`/contacts/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['contacts'] }),
+  })
+}
+
+export function useDeleteContact() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/contacts/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['contacts'] }),
+  })
+}
+
+// ── Analytics ─────────────────────────────────────────────────
+
+export interface Analytics {
+  days: number
+  totals: { sent: number; received: number; bounced: number; failed: number }
+  rates: { deliveryRate: number; openRate: number; bounceRate: number; failRate: number }
+  daily: Array<{ day: string; received: number; sent: number }>
+  topSenders: Array<{ email: string; name: string; count: number }>
+  topRecipients: Array<{ email: string; count: number }>
+}
+
+export function useAnalytics(accountId: string | null, days = 30) {
+  return useQuery({
+    queryKey: ['analytics', accountId, days],
+    queryFn: () => apiFetch<Analytics>(`/analytics?accountId=${accountId}&days=${days}`),
+    enabled: !!accountId,
+    staleTime: 60_000,
+  })
+}
+
+// ── Developer tooling ─────────────────────────────────────────
+
+export interface EmailEvent {
+  id: string
+  account_id: string
+  email_id: string | null
+  resend_email_id: string | null
+  type: string
+  payload: string | null
+  created_at: string
+}
+
+export function useEmailEvents(emailId: string | null) {
+  return useQuery({
+    queryKey: ['email-events', emailId],
+    queryFn: () => apiFetch<EmailEvent[]>(`/dev/emails/${emailId}/events`),
+    enabled: !!emailId,
+    staleTime: 10_000,
+  })
+}
+
+export function useWebhookEvents(accountId: string | null) {
+  return useQuery({
+    queryKey: ['webhook-events', accountId],
+    queryFn: () => apiFetch<EmailEvent[]>(`/dev/webhooks?accountId=${accountId}`),
+    enabled: !!accountId,
+    refetchInterval: 20_000,
+    staleTime: 5_000,
+  })
+}
+
+export function useReplayWebhook() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => apiFetch<{ replayed: boolean; status: number }>(`/dev/webhooks/${id}/replay`, { method: 'POST' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['webhook-events'] })
+      qc.invalidateQueries({ queryKey: ['emails'] })
+    },
+  })
+}
+
+export interface DomainDiagnostics {
+  domain: string
+  health: 'healthy' | 'warning' | 'critical'
+  score: number
+  checks: Record<'spf' | 'dkim' | 'dmarc', { ok: boolean; record: string | null; detail: string }>
+}
+
+export function useDomainDiagnostics(accountId: string | null) {
+  return useQuery({
+    queryKey: ['domain-diagnostics', accountId],
+    queryFn: () => apiFetch<DomainDiagnostics>(`/dev/domain/${accountId}`),
+    enabled: !!accountId,
+    staleTime: 5 * 60_000,
+  })
+}
+
+// ── Labels ────────────────────────────────────────────────────
+
+export interface Label {
+  id: string
+  account_id: string
+  name: string
+  color: string
+  created_at: string
+  email_count?: number
+}
+
+export function useLabels(accountId: string | null) {
+  return useQuery({
+    queryKey: ['labels', accountId],
+    queryFn: () => apiFetch<Label[]>(`/labels?accountId=${accountId}`),
+    enabled: !!accountId,
+    staleTime: 30_000,
+  })
+}
+
+export function useCreateLabel(accountId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: { name: string; color?: string }) =>
+      apiFetch<Label>('/labels', { method: 'POST', body: JSON.stringify({ accountId, ...payload }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['labels', accountId] }),
+  })
+}
+
+export function useUpdateLabel(accountId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...patch }: { id: string; name?: string; color?: string }) =>
+      apiFetch(`/labels/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['labels', accountId] }),
+  })
+}
+
+export function useDeleteLabel(accountId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/labels/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['labels', accountId] })
+      qc.invalidateQueries({ queryKey: ['emails'] })
+    },
+  })
+}
+
+export function useAssignLabel() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ labelId, emailId, assign }: { labelId: string; emailId: string; assign: boolean }) =>
+      apiFetch(`/labels/${labelId}/${assign ? 'assign' : 'unassign'}`, {
+        method: 'POST', body: JSON.stringify({ emailId }),
+      }),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ['email', vars.emailId] })
+      qc.invalidateQueries({ queryKey: ['emails'] })
+      qc.invalidateQueries({ queryKey: ['labels'] })
+    },
+  })
+}
+
+// ── Signatures ────────────────────────────────────────────────
+
+export interface Signature {
+  id: string
+  account_id: string
+  name: string
+  body_html: string
+  is_default: number
+  created_at: string
+  updated_at: string
+}
+
+export function useSignatures(accountId: string | null) {
+  return useQuery({
+    queryKey: ['signatures', accountId],
+    queryFn: () => apiFetch<Signature[]>(`/signatures?accountId=${accountId}`),
+    enabled: !!accountId,
+    staleTime: 30_000,
+  })
+}
+
+export function useCreateSignature(accountId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: { name: string; bodyHtml?: string; isDefault?: boolean }) =>
+      apiFetch<{ id: string }>('/signatures', { method: 'POST', body: JSON.stringify({ accountId, ...payload }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['signatures', accountId] }),
+  })
+}
+
+export function useUpdateSignature(accountId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...patch }: { id: string; name?: string; bodyHtml?: string; isDefault?: boolean }) =>
+      apiFetch(`/signatures/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['signatures', accountId] }),
+  })
+}
+
+export function useDeleteSignature(accountId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/signatures/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['signatures', accountId] }),
+  })
+}
+
+// ── Preferences ───────────────────────────────────────────────
+
+export interface Preferences {
+  theme: 'light' | 'dark' | 'system'
+  timezone: string
+  dateFormat: 'relative' | 'absolute'
+  language: string
+  density: 'comfortable' | 'compact'
+  defaultReplyBehavior: 'reply' | 'replyAll'
+  sendUndoSeconds: number
+  defaultFont: string
+  notifyDesktop: boolean
+  notifySound: boolean
+  notifyBadge: boolean
+  [key: string]: unknown
+}
+
+export function usePreferences(enabled = true) {
+  return useQuery({
+    queryKey: ['preferences'],
+    queryFn: () => apiFetch<Preferences>('/preferences'),
+    enabled,
+    staleTime: 60_000,
+  })
+}
+
+export function useUpdatePreferences() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (patch: Partial<Preferences>) =>
+      apiFetch<Preferences>('/preferences', { method: 'PUT', body: JSON.stringify(patch) }),
+    onMutate: async (patch) => {
+      await qc.cancelQueries({ queryKey: ['preferences'] })
+      const prev = qc.getQueryData<Preferences>(['preferences'])
+      if (prev) qc.setQueryData(['preferences'], { ...prev, ...patch })
+      return { prev }
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['preferences'], ctx.prev)
+    },
+    onSuccess: (data) => {
+      qc.setQueryData(['preferences'], data)
     },
   })
 }
@@ -447,6 +821,41 @@ export function useQuickReplySuggestions() {
   })
 }
 
+export function useAITranslate() {
+  return useMutation({
+    mutationFn: ({ text, targetLang, accountId }: { text: string; targetLang: string; accountId?: string }) =>
+      apiFetch<{ result: string }>('/ai/translate', { method: 'POST', body: JSON.stringify({ text, targetLang, accountId }) }),
+  })
+}
+
+export function useAIGrammar() {
+  return useMutation({
+    mutationFn: ({ text, accountId }: { text: string; accountId?: string }) =>
+      apiFetch<{ result: string }>('/ai/grammar', { method: 'POST', body: JSON.stringify({ text, accountId }) }),
+  })
+}
+
+export function useAISubject() {
+  return useMutation({
+    mutationFn: ({ body, accountId }: { body: string; accountId?: string }) =>
+      apiFetch<{ subject: string }>('/ai/subject', { method: 'POST', body: JSON.stringify({ body, accountId }) }),
+  })
+}
+
+export function useAIActionItems() {
+  return useMutation({
+    mutationFn: (emailId: string) =>
+      apiFetch<{ items: string[] }>(`/ai/action-items/${emailId}`, { method: 'POST' }),
+  })
+}
+
+export function useAICategorize() {
+  return useMutation({
+    mutationFn: (emailId: string) =>
+      apiFetch<{ priority: string; category: string; reason: string }>(`/ai/categorize/${emailId}`, { method: 'POST' }),
+  })
+}
+
 // ── Auth ──────────────────────────────────────────────────────
 
 export function useAuth() {
@@ -458,14 +867,32 @@ export function useAuth() {
   })
 }
 
+export class LoginError extends Error {
+  requiresTotp: boolean
+  constructor(message: string, requiresTotp: boolean) {
+    super(message)
+    this.requiresTotp = requiresTotp
+  }
+}
+
 export function useLogin() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (creds: { username: string; password: string }) =>
-      apiFetch<{ username: string }>('/auth/login', {
+    // Uses a raw fetch so we can read the `requiresTotp` flag on 401 responses
+    // (apiFetch collapses errors to a message string).
+    mutationFn: async (creds: { username: string; password: string; totpCode?: string }) => {
+      const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(creds),
-      }),
+      })
+      const data = await res.json() as { success: boolean; data?: { username: string }; error?: string; requiresTotp?: boolean }
+      if (!res.ok || !data.success) {
+        throw new LoginError(data.error ?? 'Login failed', !!data.requiresTotp)
+      }
+      return data.data as { username: string }
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['auth-me'] })
     },

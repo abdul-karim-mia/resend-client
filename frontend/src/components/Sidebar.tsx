@@ -21,9 +21,14 @@ export default function Sidebar() {
   const setAccount = useAppStore((s) => s.setAccount)
   const setFolder = useAppStore((s) => s.setFolder)
   const openComposer = useAppStore((s) => s.openComposer)
+  const sidebarOpen = useAppStore((s) => s.sidebarOpen)
+  const toggleSidebar = useAppStore((s) => s.toggleSidebar)
   const logout = useLogout()
 
   const isSettingsView = window.location.pathname === '/settings'
+
+  // Close the mobile drawer after a navigation action.
+  const closeDrawer = () => { if (sidebarOpen) toggleSidebar() }
 
   // Auto-select first account on load
   useEffect(() => {
@@ -33,7 +38,17 @@ export default function Sidebar() {
   }, [accounts, selectedAccountId, setAccount])
 
   return (
-    <nav className="sidebar" aria-label="Main navigation">
+    <>
+      {/* Mobile backdrop — closes the drawer when tapped */}
+      {sidebarOpen && (
+        <div
+          onClick={toggleSidebar}
+          className="sidebar-backdrop"
+          aria-hidden="true"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 99 }}
+        />
+      )}
+      <nav className={`sidebar ${sidebarOpen ? 'open' : ''}`} aria-label="Main navigation">
       {/* Logo */}
       <a href="/" style={{
         padding: '4px 8px 12px',
@@ -84,7 +99,7 @@ export default function Sidebar() {
               key={account.id}
               id={`account-${account.id}`}
               className={`nav-item ${selectedAccountId === account.id ? 'active' : ''}`}
-              onClick={() => setAccount(account.id)}
+              onClick={() => { setAccount(account.id); closeDrawer() }}
               title={account.domain}
             >
               <span style={{
@@ -134,7 +149,7 @@ export default function Sidebar() {
                 key={folder.id}
                 id={`folder-${folder.id}`}
                 className={`nav-item ${selectedFolder === folder.id ? 'active' : ''}`}
-                onClick={() => setFolder(folder.id as typeof selectedFolder)}
+                onClick={() => { setFolder(folder.id as typeof selectedFolder); closeDrawer() }}
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -162,6 +177,20 @@ export default function Sidebar() {
       <div style={{ marginTop: 'auto' }}>
         <div className="divider" />
         <a
+          href="/contacts"
+          className={`nav-item ${window.location.pathname === '/contacts' ? 'active' : ''}`}
+          id="nav-contacts"
+        >
+          <span>👥</span> Contacts
+        </a>
+        <a
+          href="/analytics"
+          className={`nav-item ${window.location.pathname === '/analytics' ? 'active' : ''}`}
+          id="nav-analytics"
+        >
+          <span>📊</span> Analytics
+        </a>
+        <a
           href="/settings"
           className={`nav-item ${isSettingsView ? 'active' : ''}`}
           id="nav-settings"
@@ -177,6 +206,7 @@ export default function Sidebar() {
           <span>↩</span> Sign out
         </button>
       </div>
-    </nav>
+      </nav>
+    </>
   )
 }

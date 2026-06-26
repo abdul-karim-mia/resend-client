@@ -15,16 +15,26 @@ import { templateRoutes } from './routes/templates'
 import { resendTemplateRoutes } from './routes/resend-templates'
 import { settingsRoutes } from './routes/settings'
 import { senderRoutes } from './routes/senders'
+import { preferenceRoutes } from './routes/preferences'
+import { labelRoutes } from './routes/labels'
+import { signatureRoutes } from './routes/signatures'
+import { devRoutes } from './routes/dev'
+import { analyticsRoutes } from './routes/analytics'
+import { contactRoutes } from './routes/contacts'
+import { securityRoutes } from './routes/security'
 import { ensureDbInitialized } from './db'
+import { runMigrations } from './migrations'
+import { dispatchDueEmails } from './scheduler'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
 let dbChecked = false
 
-// Auto-initialize DB on first request
+// Auto-initialize DB on first request, then apply additive migrations.
 app.use('*', async (c, next) => {
   if (!dbChecked && c.env.DB) {
     await ensureDbInitialized(c.env.DB)
+    await runMigrations(c.env.DB)
     dbChecked = true
   }
   await next()
@@ -72,6 +82,13 @@ app.route('/api/templates', templateRoutes)
 app.route('/api/templates/resend', resendTemplateRoutes)
 app.route('/api/settings', settingsRoutes)
 app.route('/api/settings/accounts/:id/senders', senderRoutes)
+app.route('/api/preferences', preferenceRoutes)
+app.route('/api/labels', labelRoutes)
+app.route('/api/signatures', signatureRoutes)
+app.route('/api/dev', devRoutes)
+app.route('/api/analytics', analyticsRoutes)
+app.route('/api/contacts', contactRoutes)
+app.route('/api/security', securityRoutes)
 
 // Global error handler
 app.onError((err, c) => {
@@ -91,4 +108,20 @@ app.get('*', async (c) => {
   return res
 })
 
-export default app
+// Export both the HTTP handler (Hono app) and the cron handler. The scheduled
+// handler dispatches due "send later" emails. DB init/migrations are ensured
+// here too, since cron invocations don't pass through the fetch middleware.
+export default {
+  fetch: app.fetch,
+  async scheduled(_event: ScheduledController, env: Bindings, ctx: ExecutionContext) {
+    ctx.waitUntil((async () => {
+      try {
+        await ensureDbInitialized(env.DB)
+        await runMigrations(env.DB)
+        await dispatchDueEmails(env)
+      } catch (err) {
+        console.error('[scheduled] error:', (err as Error).message)
+      }
+    })())
+  },
+}
